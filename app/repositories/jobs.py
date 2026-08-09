@@ -51,3 +51,17 @@ class JobRepository:
 
     def add(self, job: Job) -> None:
         self.session.add(job)
+
+    def list_for_source(self, company_id: int, source_type: str) -> list[Job]:
+        statement = (
+            select(Job)
+            .where(
+                Job.company_id == company_id,
+                Job.source_type == source_type,
+            )
+            .order_by(Job.id)
+        )
+        return list(self.session.scalars(statement).all())
+
+    def get(self, job_id: int) -> Job | None:
+        return self.session.get(Job, job_id)

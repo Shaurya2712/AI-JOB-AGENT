@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M12 Normalization + Deduplication are complete. M13 has not started.
+M01 Project Foundation through M13 Lifecycle are complete. M14 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -102,6 +102,8 @@ M11 added `beautifulsoup4` as the architecture-approved direct runtime HTML pars
 
 M12 added no dependency; canonicalization, hashing, validation, and transactional persistence use the standard library plus the existing SQLAlchemy/Alembic stack.
 
+M13 added no dependency; lifecycle reconciliation uses the existing job model, SQLAlchemy session/repository boundary, and typed settings.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -152,7 +154,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M10 Workday Connector | Pragmatic supported Workday collection behind the same contract | Deterministic fixtures validate the bounded implementation; unsupported variants fail safely | Complete |
 | M11 Generic Career Page Fallback | Bounded best-effort HTML job extraction | Time, size, type, URL/domain, and link limits hold; unreliable pages become unsupported | Complete |
 | M12 Normalization + Deduplication | Canonical job schema, URL/source/fingerprint identity, upsert | Rediscovery remains one row; changes update; `last_seen_at` refreshes | Complete |
-| M13 Lifecycle | Missing counters and open/possibly-closed/closed transitions | One absence stays open; repeated confirmed absence transitions; reappearance resets; explicit closure closes | Pending |
+| M13 Lifecycle | Missing counters and open/possibly-closed/closed transitions | One absence stays open; repeated confirmed absence transitions; reappearance resets; explicit closure closes | Complete |
 | M14 Deterministic Qualification | Cheap exclusions and flexible experience/seniority/skill handling | Targeted cases reject only specified obvious mismatches and retain valid partial/senior matches | Pending |
 | M15 AI Provider Layer + Matching | OpenAI/Anthropic/Gemini HTTP adapters, structured matching, suggestions, persistence | Malformed output cannot crash scans; unchanged jobs need not rescore; secrets/text boundaries are safe | Pending |
 | M16 Dashboard + Filters | Paginated job views, required metrics, filters, score labels | Open 85+ jobs are quickly findable; applied/ignored and location filters work | Pending |
@@ -866,6 +868,65 @@ Issues discovered:
 - `source_payload_json` is nullable and remains empty because the frozen connector contract does not expose raw payloads. M12 does not expand that contract or persist unbounded source responses.
 - No external sites were called. All M12 behavior is verified against a temporary migrated SQLite database and deterministic connector records.
 
+## M13 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A source-scoped lifecycle reconciliation service over persisted M12 jobs, with no scan orchestration or M14 qualification behavior.
+- Failed-scan protection: unsuccessful source scans make no lifecycle or missing-counter changes and return an explicit `scan_applied=false` result.
+- Successful-scan missing counters: the first confirmed absence remains `open`, the second becomes `possibly_closed`, and the configured repeated-absence threshold closes the job.
+- A typed `JOB_AGENT_JOB_LIFECYCLE_CLOSE_AFTER_MISSING_SCANS` setting with a conservative default of three successful absences and a validated range of 3–20.
+- Reappearance handling that resets the missing counter to zero and restores `open`, including jobs previously marked `possibly_closed` or `closed`.
+- Direct explicit-closure handling that transitions a persisted job to `closed` immediately and is idempotent when repeated.
+- Frozen handling for already-closed absent jobs so later absence scans do not continuously increase their counters or manufacture additional transitions.
+- Company/source existence and scope validation before mutation, preventing a successful scan from reconciling job identifiers belonging to another company or source.
+- Atomic commit/rollback behavior and normalized timezone-aware reconciliation timestamps.
+- Focused lifecycle tests covering repeated successful absence, failed-scan protection, cross-scope rejection, explicit closure, repeated closure, and reappearance reset.
+- No database migration: M12 already created the lifecycle status and missing-counter columns required by M13.
+
+Files created:
+
+- `app/services/job_lifecycle.py`
+- `tests/module/test_m13_job_lifecycle.py`
+
+Files changed:
+
+- `.env.example`
+- `README.md`
+- `app/config.py`
+- `app/repositories/jobs.py`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m13_job_lifecycle.py` -> 3 passed
+- Repeated-absence workflow -> first successful absence remained `open` with count 1, second became `possibly_closed` with count 2, and the default third absence became `closed` with count 3
+- Closed-state workflow -> later absence left the closed job and counter unchanged
+- Reappearance workflow -> a seen closed job returned to `open` with a zero missing counter; a normal M12 upsert alone did not bypass lifecycle reconciliation
+- Failed-scan workflow -> an unsuccessful scan changed neither lifecycle nor missing count
+- Scope workflow -> a seen job identifier owned by another company was rejected before any lifecycle changes, and the transaction remained unchanged
+- Explicit-closure workflow -> an open job closed immediately, a repeated request was idempotent, and a later confirmed reappearance reset it to open
+- `.venv/bin/python -m compileall -q app/config.py app/repositories/jobs.py app/services/job_lifecycle.py tests/module/test_m13_job_lifecycle.py` -> passed
+- `.venv/bin/python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M13 acceptance criteria pass. One confirmed absence does not close a job, repeated successful absences transition safely through `possibly_closed` to `closed`, failed scans do not count as absences, reappearance restores `open` with zero misses, and an explicit closed signal may close immediately.
+
+Issues discovered:
+
+- No M13 lifecycle, transaction, source-scope, explicit-closure, or reappearance failure remains.
+- The closure threshold is intentionally at least three, ensuring the second absence can represent `possibly_closed`; deployments may raise it through the typed environment setting without code changes.
+- Failed scans neither increment nor reset the counter. The next successful scan therefore continues from the preceding successful observation history, matching the frozen requirement for consecutive successful scan evidence.
+- Explicit closure does not fabricate a missing-scan count. The lifecycle state records the direct signal, while the counter continues to represent confirmed scan absences.
+- M13 accepts already-persisted source scan results; scan scheduling, overlap control, company scan metadata, and scan-health logging remain owned by later modules.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -882,7 +943,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M13 when explicitly requested.
+There are no genuine blockers to starting M14 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -890,4 +951,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M12. Do not begin M13 until explicitly requested.
+Stop after M13. Do not begin M14 until explicitly requested.

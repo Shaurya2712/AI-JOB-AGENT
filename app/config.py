@@ -35,6 +35,7 @@ class Settings(BaseSettings):
         ge=1024,
         le=25 * 1024 * 1024,
     )
+    job_lifecycle_close_after_missing_scans: int = Field(default=3, ge=3, le=20)
 
     model_config = SettingsConfigDict(
         env_prefix="JOB_AGENT_",

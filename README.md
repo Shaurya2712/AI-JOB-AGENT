@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M04 Company Registry + Seeds.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M13 Lifecycle.
 
 ## Requirements
 
@@ -31,7 +31,7 @@ Open <http://127.0.0.1:8000>. The SQLite database is created and migrated automa
 
 Candidate profiles can be created and edited at <http://127.0.0.1:8000/profiles>. Multiple profiles may remain active, and stored AI role/skill suggestions require an explicit accept or reject decision before they can change a profile. Each profile can store multiple local TXT, PDF, or DOCX resumes and select one primary resume.
 
-The local company registry is available at <http://127.0.0.1:8000/companies>. The bundled company seed file is imported idempotently at startup; provider detection and web discovery are not part of the current module.
+The local company registry is available at <http://127.0.0.1:8000/companies>. The bundled company seed file is imported idempotently at startup. Discovery, ATS detection, supported job-source connectors, normalization/deduplication, and lifecycle handling are implemented as application services; scan orchestration and browser job views remain later modules.
 
 To apply migrations without starting the web application:
 
@@ -43,4 +43,10 @@ alembic upgrade head
 
 ```bash
 pytest tests/module/test_m01_foundation.py
+```
+
+## M13 Focused Tests
+
+```bash
+pytest tests/module/test_m13_job_lifecycle.py
 ```
