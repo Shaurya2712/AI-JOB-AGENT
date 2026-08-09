@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard · {{ app_name }}{% endblock %}
+
+{% block content %}
+  <section class="page-header" aria-labelledby="page-title">
+    <div>
+      <p class="eyebrow">Job search / Overview</p>
+      <h1 id="page-title">Job Search Dashboard</h1>
+      <p class="page-intro">Your focused view of roles worth applying to today.</p>
+    </div>
+    <button class="button" type="button" disabled title="Search will be enabled when discovery is configured">
+      Search Now
+    </button>
+  </section>
+
+  <dl class="status-strip" aria-label="Job search status">
+    <div class="stat-cell">
+      <dt>Apply Today</dt>
+      <dd>0</dd>
+    </div>
+    <div class="stat-cell">
+      <dt>Strong Matches</dt>
+      <dd>0</dd>
+    </div>
+    <div class="stat-cell">
+      <dt>New Jobs</dt>
+      <dd>0</dd>
+    </div>
+    <div class="stat-cell">
+      <dt>Applied</dt>
+      <dd>0</dd>
+    </div>
+    <div class="stat-cell">
+      <dt>Scan Health</dt>
+      <dd class="stat-cell__text"><span class="status-dot" aria-hidden="true"></span> Ready</dd>
+    </div>
+  </dl>
+
+  <section class="editorial-section" aria-labelledby="apply-today-title">
+    <header class="section-header">
+      <p class="section-number">Section 01</p>
+      <div>
+        <h2 id="apply-today-title">Apply Today</h2>
+        <p>The daily queue will prioritize your strongest open matches.</p>
+      </div>
+    </header>
+    <div class="empty-state">
+      <p class="empty-state__label">Foundation ready</p>
+      <h3>No jobs have been discovered yet.</h3>
+      <p>Profile setup and job discovery will be added in their scheduled modules.</p>
+    </div>
+  </section>
+
+  <section class="editorial-section editorial-section--compact" aria-labelledby="scan-title">
+    <header class="section-header">
+      <p class="section-number">Section 02</p>
+      <div>
+        <h2 id="scan-title">Latest Scan</h2>
+        <p>No scan has run. The application and local database are ready.</p>
+      </div>
+    </header>
+  </section>
+{% endblock %}

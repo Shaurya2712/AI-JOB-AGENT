@@ -1,0 +1,40 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+import logging
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+
+from app.config import Settings, get_settings
+from app.db import create_database_engine, database_is_ready, run_migrations
+from app.web.routes import STATIC_DIR, router
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    resolved_settings = settings or get_settings()
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        logging.basicConfig(level=resolved_settings.log_level)
+        run_migrations(resolved_settings)
+        engine = create_database_engine(resolved_settings.database_url)
+        if not database_is_ready(engine):
+            engine.dispose()
+            raise RuntimeError("Database readiness check failed")
+        application.state.engine = engine
+        try:
+            yield
+        finally:
+            engine.dispose()
+
+    application = FastAPI(
+        title=resolved_settings.app_name,
+        lifespan=lifespan,
+    )
+    application.state.settings = resolved_settings
+    application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    application.include_router(router)
+    return application
+
+
+app = create_app()
