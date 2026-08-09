@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     search_max_queries_per_run: int = Field(default=30, ge=1, le=100)
     search_concurrency: int = Field(default=3, ge=1, le=5)
     search_timeout_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
+    job_source_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
+    job_source_concurrency: int = Field(default=3, ge=1, le=5)
+    job_source_max_response_bytes: int = Field(
+        default=8 * 1024 * 1024,
+        ge=1024,
+        le=25 * 1024 * 1024,
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="JOB_AGENT_",

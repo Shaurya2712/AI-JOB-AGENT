@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M06 ATS Detection are complete. M07 has not started.
+M01 Project Foundation through M07 Greenhouse Connector are complete. M08 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -90,6 +90,8 @@ M05 promoted the already-approved and already-installed `httpx` package from tes
 
 M06 added no dependency; ATS detection uses deterministic standard-library URL parsing and the existing SQLAlchemy company registry.
 
+M07 added no dependency; the connector reuses the architecture-approved runtime `httpx` and Pydantic packages, with standard-library HTML-to-text handling.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -134,7 +136,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M04 Company Registry + Seeds | Company/provider metadata and seed import | Seed load is idempotent and preserves scan metadata | Complete |
 | M05 Query Generation + Web Discovery | Profile-derived queries, search abstraction, initial Brave Search adapter, persistent discoveries | Duplicate companies are avoided; discovery failure does not block known ATS scans | Complete |
 | M06 ATS Detection | Detect supported ATS types and safely classify recognized/unsupported sources | Fixture URLs classify correctly; unsupported sources are recorded and skipped | Complete |
-| M07 Greenhouse Connector | Fetch and normalize open Greenhouse jobs behind the connector contract | Deterministic fixtures validate mapping, pagination/error isolation as applicable | Pending |
+| M07 Greenhouse Connector | Fetch and normalize open Greenhouse jobs behind the connector contract | Deterministic fixtures validate mapping, pagination/error isolation as applicable | Complete |
 | M08 Lever Connector | Fetch and normalize open Lever jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Pending |
 | M09 Ashby Connector | Fetch and normalize open Ashby jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Pending |
 | M10 Workday Connector | Pragmatic supported Workday collection behind the same contract | Deterministic fixtures validate the bounded implementation; unsupported variants fail safely | Pending |
@@ -498,6 +500,61 @@ Issues discovered:
 - Workday detection is deliberately limited to identifiable `myworkdayjobs.com` tenant/site URLs. Universal Workday discovery and collection are outside M06 and explicitly prohibited by the frozen M10 scope.
 - Explicit stored ATS metadata with a recognized provider and usable identifier is treated as authoritative, preserving the M04 seed/import boundary.
 
+## M07 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A minimal asynchronous `JobConnector` boundary and immutable provider-neutral `ConnectorJob` result containing source identity, title, location text, plain description, and public job URL.
+- A Greenhouse connector using the public Job Board API list endpoint with the detected board token and `content=true` for full descriptions.
+- Mapping of Greenhouse job IDs, titles, locations, descriptions, and absolute job URLs into the shared connector result contract.
+- Standard-library HTML/entity decoding into bounded plain text without introducing the M11 generic HTML parsing dependency or logic.
+- Exclusion of Greenhouse prospect/general-application posts identified by a null `internal_job_id`, while retaining all actual job posts returned by the board endpoint.
+- Strict board-token and returned job URL validation, structured Pydantic response validation, a 5,000-job response-list bound, and a configurable eight-MiB default response limit.
+- Configurable job-source timeout and concurrency with a maximum of five requests, a bounded HTTP connection pool, disabled redirects, and one retry only for transport failures or HTTP 5xx responses.
+- A small collection service that selects only active, connector-ready companies for the connector's provider and isolates each company result as success or failure.
+- Bounded connector error text and generic handling for unexpected adapter failures, so one failed Greenhouse board cannot discard successful results from other boards.
+- No job table, persistence, canonical normalization, deduplication, lifecycle handling, scan log, scheduler, or Lever connector; M08 was not started.
+
+Files created:
+
+- `app/providers/jobs/__init__.py`, `app/providers/jobs/base.py`, `app/providers/jobs/greenhouse.py`, and `app/providers/jobs/factory.py`
+- `app/services/job_collection.py`
+- `tests/module/test_m07_greenhouse.py`
+
+Files changed:
+
+- `.env.example` and `app/config.py`
+- `app/repositories/companies.py`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none; M07 reuses existing direct `httpx` and Pydantic dependencies
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `python -m pytest tests/module/test_m07_greenhouse.py` -> 3 passed
+- Mapping workflow -> two actual fixture jobs mapped to the connector contract with normalized whitespace and plain descriptions; one null-`internal_job_id` prospect post was excluded
+- Request workflow -> the public board endpoint, board identifier, `content=true`, JSON accept header, absence of authorization, and one safe HTTP 5xx retry were verified through deterministic mock transport
+- Validation workflow -> a path-like board identifier made no request, and malformed Greenhouse JSON raised a controlled connector error
+- Isolation workflow -> one failed board and one successful board produced independent results; unsupported Greenhouse and non-Greenhouse companies were not collected
+- `python -m compileall -q app/providers/jobs app/services/job_collection.py app/config.py app/repositories/companies.py tests/module/test_m07_greenhouse.py` -> passed
+- `python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M07 scope and acceptance requirements pass. Greenhouse open jobs are fetched through the public structured endpoint, mapped into the connector contract, and returned per company; malformed responses and failed boards are isolated without preventing other Greenhouse boards from succeeding.
+
+Issues discovered:
+
+- No M07 request, mapping, validation, or source-isolation failure remains.
+- Greenhouse documents the list-jobs endpoint as returning all job posts and does not define pagination for that endpoint, so M07 performs one bounded request per board rather than inventing pagination parameters.
+- Greenhouse exposes `updated_at`, not a reliable original posting date. M07 does not mislabel it as `posted_at`; later normalization will leave posting time unknown unless a source provides it explicitly.
+- Live Greenhouse sites were not called. The public contract and response behavior are verified with deterministic local transport fixtures.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -514,7 +571,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M07 when explicitly requested.
+There are no genuine blockers to starting M08 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -522,4 +579,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M06. Do not begin M07 until explicitly requested.
+Stop after M07. Do not begin M08 until explicitly requested.
