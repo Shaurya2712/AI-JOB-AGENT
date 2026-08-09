@@ -7,9 +7,9 @@
     <div>
       <p class="eyebrow">Job search / Overview</p>
       <h1 id="page-title">Job Search Dashboard</h1>
-      <p class="page-intro">Your focused view of roles worth applying to today.</p>
+      <p class="page-intro">Your focused view of roles worth reviewing today.</p>
     </div>
-    <button class="button" type="button" disabled title="Search will be enabled when discovery is configured">
+    <button class="button" type="button" disabled title="Search Now is introduced with scan scheduling">
       Search Now
     </button>
   </section>
@@ -17,19 +17,19 @@
   <dl class="status-strip" aria-label="Job search status">
     <div class="stat-cell">
       <dt>Apply Today</dt>
-      <dd>0</dd>
+      <dd data-metric="apply-today">{{ metrics.apply_today }}</dd>
     </div>
     <div class="stat-cell">
       <dt>Strong Matches</dt>
-      <dd>0</dd>
+      <dd data-metric="strong-matches">{{ metrics.strong_matches }}</dd>
     </div>
     <div class="stat-cell">
       <dt>New Jobs</dt>
-      <dd>0</dd>
+      <dd data-metric="new-jobs">{{ metrics.new_jobs }}</dd>
     </div>
     <div class="stat-cell">
       <dt>Applied</dt>
-      <dd>0</dd>
+      <dd data-metric="applied">{{ metrics.applied }}</dd>
     </div>
     <div class="stat-cell">
       <dt>Scan Health</dt>
@@ -37,18 +37,57 @@
     </div>
   </dl>
 
-  <section class="editorial-section" aria-labelledby="apply-today-title">
+  <section class="editorial-section" aria-labelledby="strong-matches-title">
     <header class="section-header">
       <p class="section-number">Section 01</p>
       <div>
-        <h2 id="apply-today-title">Apply Today</h2>
-        <p>The daily queue will prioritize your strongest open matches.</p>
+        <h2 id="strong-matches-title">Strong Matches</h2>
+        <p>Highest-scoring open roles across your candidate profiles.</p>
       </div>
     </header>
-    <div class="empty-state">
-      <p class="empty-state__label">Foundation ready</p>
-      <h3>No jobs have been discovered yet.</h3>
-      <p>Profile setup and job discovery will be added in their scheduled modules.</p>
+    <div>
+      {% if strong_matches %}
+        <div class="table-scroll">
+          <table class="data-table data-table--compact">
+            <thead>
+              <tr>
+                <th scope="col">Match</th>
+                <th scope="col">Role</th>
+                <th scope="col">Company</th>
+                <th scope="col">Location</th>
+                <th scope="col">State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in strong_matches %}
+                <tr data-job-id="{{ item.id }}">
+                  <td>
+                    <span class="score-value">{{ item.overall_score }}%</span>
+                    <span class="table-subtext">{{ item.recommendation_label }}</span>
+                  </td>
+                  <td>
+                    <a class="job-title-link" href="{{ item.canonical_url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+                    <span class="table-subtext">{{ item.source_type }}</span>
+                  </td>
+                  <td>{{ item.company_name }}</td>
+                  <td>
+                    {{ item.location_text }}
+                    {% if item.remote_type %}<span class="table-subtext">{{ item.remote_type }}</span>{% endif %}
+                  </td>
+                  <td><span class="badge">{{ item.user_state }}</span></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="section-action"><a class="text-link" href="/jobs?min_score=85&amp;lifecycle=open">View all strong open matches</a></p>
+      {% else %}
+        <div class="empty-state">
+          <p class="empty-state__label">No strong matches yet</p>
+          <h3>No open 85+ matches are available.</h3>
+          <p>Scored jobs will appear here after collection and matching run.</p>
+        </div>
+      {% endif %}
     </div>
   </section>
 
@@ -57,7 +96,7 @@
       <p class="section-number">Section 02</p>
       <div>
         <h2 id="scan-title">Latest Scan</h2>
-        <p>No scan has run. The application and local database are ready.</p>
+        <p>No scan history is available yet. Scan scheduling and run visibility remain disabled.</p>
       </div>
     </header>
   </section>

@@ -10,6 +10,7 @@ from app.models.base import Base, utc_now
 
 if TYPE_CHECKING:
     from app.models.job_matches import JobMatch
+    from app.models.job_user_state import JobUserState
     from app.models.resumes import Resume
 
 
@@ -48,6 +49,11 @@ class CandidateProfile(Base):
     )
     matches: Mapped[list["JobMatch"]] = relationship(
         "JobMatch",
+        back_populates="profile",
+        cascade="all, delete-orphan",
+    )
+    job_states: Mapped[list["JobUserState"]] = relationship(
+        "JobUserState",
         back_populates="profile",
         cascade="all, delete-orphan",
     )

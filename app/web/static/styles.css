@@ -750,6 +750,81 @@ a:focus-visible {
   font-size: 0.6875rem;
 }
 
+.data-table--compact {
+  min-width: 700px;
+}
+
+.job-title-link {
+  font-weight: 700;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+.score-value {
+  display: block;
+  color: var(--color-accent-dark);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.score-label {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: 0.625rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.section-action {
+  margin: var(--space-4) 0 0;
+  text-align: right;
+}
+
+.filter-bar {
+  margin-bottom: var(--space-12);
+  padding-block: var(--space-6);
+  border-block: 1px solid var(--color-border);
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.filter-checkbox {
+  min-height: 2.75rem;
+  align-self: end;
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.filter-actions,
+.pagination,
+.pagination > div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.filter-actions {
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+.pagination {
+  justify-content: space-between;
+  padding-top: var(--space-6);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .site-footer {
   border-top: 1px solid var(--color-border);
   color: var(--color-text-muted);
@@ -812,7 +887,8 @@ a:focus-visible {
   .profile-columns,
   .resume-upload,
   .field-grid--two,
-  .field-grid--salary {
+  .field-grid--salary,
+  .filter-grid {
     grid-template-columns: 1fr;
   }
 }

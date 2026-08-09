@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M15 AI Provider Layer + Matching are complete. M16 has not started.
+M01 Project Foundation through M16 Dashboard + Filters are complete. M17 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -108,6 +108,8 @@ M14 added no dependency; deterministic qualification uses immutable standard-lib
 
 M15 added no dependency; the three AI adapters reuse the architecture-approved `httpx` and Pydantic packages already installed as direct runtime dependencies.
 
+M16 added no dependency; dashboard queries, pagination, filtering, and the frozen user-state table use the existing FastAPI, Jinja2, SQLAlchemy, and Alembic stack.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -161,7 +163,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M13 Lifecycle | Missing counters and open/possibly-closed/closed transitions | One absence stays open; repeated confirmed absence transitions; reappearance resets; explicit closure closes | Complete |
 | M14 Deterministic Qualification | Cheap exclusions and flexible experience/seniority/skill handling | Targeted cases reject only specified obvious mismatches and retain valid partial/senior matches | Complete |
 | M15 AI Provider Layer + Matching | OpenAI/Anthropic/Gemini HTTP adapters, structured matching, suggestions, persistence | Malformed output cannot crash scans; unchanged jobs need not rescore; secrets/text boundaries are safe | Complete |
-| M16 Dashboard + Filters | Paginated job views, required metrics, filters, score labels | Open 85+ jobs are quickly findable; applied/ignored and location filters work | Pending |
+| M16 Dashboard + Filters | Paginated job views, required metrics, filters, score labels | Open 85+ jobs are quickly findable; applied/ignored and location filters work | Complete |
 | M17 Daily Action Queue | Ranked configurable queue, default 10 | Only strongest open, relevant, unhandled jobs appear | Pending |
 | M18 Job Detail + State | Reading-oriented detail, original URL, Save/Applied/Ignore, resume/note | State persists across rediscovery and applied metadata is retained | Pending |
 | M19 Scheduler + Search Now | Configurable four-hour default, common pipeline, run visibility, overlap protection | Manual/scheduled paths match and concurrent scans are prevented | Pending |
@@ -1057,6 +1059,71 @@ Issues discovered:
 - AI inputs are deliberately bounded and may truncate very long descriptions/resume collections. Resume IDs and names remain present for the bounded resume set, while excessive text cannot grow a request without limit.
 - M15 exposes the provider and matching service boundaries but does not schedule them or render results; the common scan pipeline and dashboard remain later owning modules.
 
+## M16 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A server-rendered dashboard backed by live aggregate counts for Apply Today candidates, open Strong Matches, new open jobs, and applied jobs while retaining the existing scan-health placeholder owned by M21.
+- A Strong Matches dashboard table showing the five highest-scoring open jobs and a direct link to the complete 85+ open-job result set. This is a reference list, not M17's configurable daily action queue.
+- A `/jobs` browser page with 25-row server-side pagination, stable score-first ordering, total/page information, previous/next navigation, and an explicit empty state.
+- The complete frozen M16 filter set: candidate profile, role, minimum score, location mode, city, source, lifecycle, New/Saved/Applied/Ignored, minimum salary, remote-only, posted date, and discovered date.
+- A compact editorial job table with the required Match, Role, Company, Location, Salary, Source, Discovered/Posted, and Status columns.
+- Best available profile match selection per job, frozen M15 score labels, profile name, user state, lifecycle state, formatted salary, and posted/discovered dates.
+- The frozen `job_user_state` table and SQLAlchemy relationships required for M16's read-only state filters, including one state per job/profile, constrained state values, optional application metadata fields, and cascade/set-null foreign-key behavior.
+- Alembic revision `20260809_0007` for only the frozen user-state table and its required constraints/indexes.
+- Read-only M16 state display/filtering. Save, Applied, Ignore, note, resume-selection, and job-detail mutation routes remain owned by M18 and were not added.
+- No client-side dataset rendering, SPA framework, JavaScript dependency, configurable queue, job detail, state action, scheduler, scan orchestration, or M17+ functionality.
+
+Files created:
+
+- `app/models/job_user_state.py`
+- `app/services/job_dashboard.py`
+- `app/web/jobs.py`
+- `app/web/templates/jobs.html`
+- `migrations/versions/20260809_0007_job_user_state.py`
+- `tests/module/test_m16_dashboard_filters.py`
+
+Files changed:
+
+- `app/main.py`
+- `app/models/__init__.py`, `app/models/jobs.py`, and `app/models/profiles.py`
+- `app/web/routes.py`, `app/web/templates/base.html`, and `app/web/templates/dashboard.html`
+- `app/web/static/styles.css`
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m16_dashboard_filters.py` -> 3 passed
+- Dashboard workflow -> live counts reported two strong unhandled candidates, three open strong matches, one new open job, and one applied job from the deterministic fixture.
+- 85+ workflow -> the dashboard and `/jobs?min_score=85&lifecycle=open` surfaced all three open 85+ matches, displayed `92%` as `Excellent`, and excluded an open 82 match and a closed 95 match.
+- State/location workflow -> profile-scoped applied and ignored filters returned only their matching rows with onsite/Bengaluru and hybrid/Pune constraints; a remote/Pune saved Lever result also filtered correctly.
+- Complete-filter workflow -> the rendered form exposed all twelve frozen filter inputs and retained filtered values.
+- Pagination workflow -> 26 open jobs rendered as 25 rows on page one and one row on page two with working Next/Previous links.
+- Disposable SQLite `alembic upgrade head` through `20260809_0007`, followed by `alembic check` -> no new upgrade operations detected.
+- `.venv/bin/python -m compileall -q app/models app/services/job_dashboard.py app/web/jobs.py app/web/routes.py app/main.py migrations/versions/20260809_0007_job_user_state.py tests/module/test_m16_dashboard_filters.py` -> passed.
+- `.venv/bin/python -m pip check` -> no broken requirements.
+- `git diff --check` -> passed.
+- The full application test suite was intentionally not run under the frozen testing policy.
+
+Acceptance result: all M16 acceptance criteria pass. Open jobs scoring at least 85 are directly reachable from the dashboard and score/lifecycle filters; pagination and score labels render correctly; applied, ignored, city, location-mode, and remote filtering work alongside every other frozen product filter.
+
+Issues discovered:
+
+- No M16 migration, dashboard-query, pagination, score-label, state-filter, location-filter, or rendering failure remains.
+- The request said to verify M15 acceptance criteria while otherwise limiting work and tests to M16. This was treated as a module-number typo; M16 acceptance criteria were verified, and M15 or full-project tests were not rerun.
+- M16 needs the frozen `job_user_state` schema to read applied/ignored filters before M18 owns the browser mutations. Focused fixtures create those states directly; no premature state action was exposed.
+- The Apply Today metric counts open 85+ jobs that have not been applied to or ignored, but M16 does not choose a configurable target or render a ranked daily queue. Those behaviors remain entirely deferred to M17.
+- A first disposable-migration command was rejected before execution because its temporary-file cleanup used a prohibited `rm` command. The check was rerun successfully with an OS-managed temporary database and no manual deletion.
+- No live provider or external site was called; M16 uses only the local SQLite data already produced by earlier modules.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -1073,7 +1140,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M16 when explicitly requested.
+There are no genuine blockers to starting M17 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -1081,4 +1148,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M15. Do not begin M16 until explicitly requested.
+Stop after M16. Do not begin M17 until explicitly requested.

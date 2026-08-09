@@ -1,10 +1,13 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
 
 from app.db import database_is_ready
+from app.services.job_dashboard import JobDashboardService, JobFilters, STRONG_MATCH_MINIMUM
+from app.web.dependencies import get_session
 
 
 WEB_DIR = Path(__file__).resolve().parent
@@ -16,12 +19,27 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
-def dashboard(request: Request) -> HTMLResponse:
+def dashboard(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
     settings = request.app.state.settings
+    service = JobDashboardService(session)
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
-        context={"app_name": settings.app_name, "active_nav": "dashboard"},
+        context={
+            "app_name": settings.app_name,
+            "active_nav": "dashboard",
+            "metrics": service.metrics(),
+            "strong_matches": service.list_jobs(
+                JobFilters(
+                    min_score=STRONG_MATCH_MINIMUM,
+                    lifecycle="open",
+                ),
+                page=1,
+            ).items[:5],
+        },
     )
 
 
