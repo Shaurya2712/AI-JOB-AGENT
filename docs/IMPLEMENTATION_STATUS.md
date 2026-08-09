@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M13 Lifecycle are complete. M14 has not started.
+M01 Project Foundation through M14 Deterministic Qualification are complete. M15 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -104,6 +104,8 @@ M12 added no dependency; canonicalization, hashing, validation, and transactiona
 
 M13 added no dependency; lifecycle reconciliation uses the existing job model, SQLAlchemy session/repository boundary, and typed settings.
 
+M14 added no dependency; deterministic qualification uses immutable standard-library results and the existing profile/job models.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -155,7 +157,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M11 Generic Career Page Fallback | Bounded best-effort HTML job extraction | Time, size, type, URL/domain, and link limits hold; unreliable pages become unsupported | Complete |
 | M12 Normalization + Deduplication | Canonical job schema, URL/source/fingerprint identity, upsert | Rediscovery remains one row; changes update; `last_seen_at` refreshes | Complete |
 | M13 Lifecycle | Missing counters and open/possibly-closed/closed transitions | One absence stays open; repeated confirmed absence transitions; reappearance resets; explicit closure closes | Complete |
-| M14 Deterministic Qualification | Cheap exclusions and flexible experience/seniority/skill handling | Targeted cases reject only specified obvious mismatches and retain valid partial/senior matches | Pending |
+| M14 Deterministic Qualification | Cheap exclusions and flexible experience/seniority/skill handling | Targeted cases reject only specified obvious mismatches and retain valid partial/senior matches | Complete |
 | M15 AI Provider Layer + Matching | OpenAI/Anthropic/Gemini HTTP adapters, structured matching, suggestions, persistence | Malformed output cannot crash scans; unchanged jobs need not rescore; secrets/text boundaries are safe | Pending |
 | M16 Dashboard + Filters | Paginated job views, required metrics, filters, score labels | Open 85+ jobs are quickly findable; applied/ignored and location filters work | Pending |
 | M17 Daily Action Queue | Ranked configurable queue, default 10 | Only strongest open, relevant, unhandled jobs appear | Pending |
@@ -927,6 +929,62 @@ Issues discovered:
 - Explicit closure does not fabricate a missing-scan count. The lifecycle state records the direct signal, while the counter continues to represent confirmed scan absences.
 - M13 accepts already-persisted source scan results; scan scheduling, overlap control, company scan metadata, and scan-health logging remain owned by later modules.
 
+## M14 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A stateless, profile-specific deterministic qualification service that runs against existing M02 profiles and M12 jobs and returns an immutable eligible/rejected result with stable reason codes.
+- Exact-token internship detection from job titles and employment type, avoiding false positives such as `Internal Tools Engineer`.
+- Conservative role relevance using the profile's target roles and approved synonyms, small developer/engineer aliases, ignored seniority/level words, and a narrow set of obvious occupational domain conflicts.
+- Management-only rejection for manager/director/head/chief/VP-style titles unless a management role in the profile explicitly targets the same role family.
+- Flexible experience handling that uses structured `experience_min` when available or conservatively recognizes explicit required/minimum experience statements in descriptions.
+- A three-year experience allowance so close Senior/Lead opportunities remain eligible while only obvious gaps are rejected; Senior, Lead, Principal, Staff, and similar title words never reject by themselves.
+- Preferred/desirable experience statements are ignored by the deterministic rejection rule rather than treated as hard requirements.
+- Partial-skill preservation: qualification does not reject based on missing or incomplete `skills_json`; detailed skill fit remains owned by M15 scoring.
+- Existing profile excluded keywords are honored through bounded phrase matching over title, employment type, and description.
+- No qualification persistence, schema migration, score, AI provider, job match, scan pipeline, UI, or M15 behavior was added.
+
+Files created:
+
+- `app/services/job_qualification.py`
+- `tests/module/test_m14_job_qualification.py`
+
+Files changed:
+
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m14_job_qualification.py` -> 4 passed
+- Internship workflow -> a software internship was rejected while `Internal Tools Engineer` remained eligible
+- Unrelated-role workflow -> an obvious Sales Engineer conflict was rejected despite sharing the generic Engineer word
+- Management workflow -> Engineering Manager was rejected for an engineering-only profile and retained for a profile explicitly targeting Engineering Manager
+- Flexible-experience workflow -> a Senior role requiring three additional years remained eligible; a Lead role with a four-year gap and a description with ten explicitly required years were rejected
+- Preferred-experience workflow -> a ten-year preferred-only statement did not reject
+- Seniority/skill workflow -> a Technical Lead with only one recorded matching skill remained eligible
+- Profile-exclusion workflow -> an explicit `contract role` profile exclusion rejected a matching role containing that phrase
+- `.venv/bin/python -m compileall -q app/services/job_qualification.py tests/module/test_m14_job_qualification.py` -> passed
+- `.venv/bin/python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M14 acceptance criteria pass. Internships, obvious unrelated roles, inappropriate management-only roles, and clear experience mismatches are rejected before AI, while Senior/Lead titles, flexible near-range experience, preferred-only experience, explicitly targeted management roles, and partial-skill matches remain eligible.
+
+Issues discovered:
+
+- No M14 deterministic-rule or focused-test failure remains.
+- Role filtering is intentionally conservative: generic or ambiguous technical roles remain eligible unless there is an explicit conflict, leaving nuanced relevance to M15 rather than risking false negatives.
+- Description experience parsing accepts only narrow required/minimum/range forms and ignores nearby preferred/desirable language. Ambiguous prose stays eligible.
+- The three-year experience allowance is a small fixed V1 rule, not a new runtime setting; this keeps qualification flexible without adding unspecified configuration.
+- Qualification is evaluated per profile and is not persisted because the frozen data model defines no qualification record or job-level profile-independent flag. M15 can score only results that pass this gate.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -943,7 +1001,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M14 when explicitly requested.
+There are no genuine blockers to starting M15 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -951,4 +1009,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M13. Do not begin M14 until explicitly requested.
+Stop after M14. Do not begin M15 until explicitly requested.

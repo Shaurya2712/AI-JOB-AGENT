@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M13 Lifecycle.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M14 Deterministic Qualification.
 
 ## Requirements
 
@@ -49,4 +49,10 @@ pytest tests/module/test_m01_foundation.py
 
 ```bash
 pytest tests/module/test_m13_job_lifecycle.py
+```
+
+## M14 Focused Tests
+
+```bash
+pytest tests/module/test_m14_job_qualification.py
 ```
