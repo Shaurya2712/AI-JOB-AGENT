@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import logging
@@ -10,6 +11,7 @@ from app.db import create_database_engine, create_session_factory, database_is_r
 from app.providers.telegram import open_telegram_client
 from app.services.companies import CompanyService
 from app.services.notifications import NotificationService
+from app.services.runtime_settings import RuntimeSettingsService
 from app.services.scan_history import ScanHistoryService
 from app.services.scans import ApplicationScanPipeline, ScanController
 from app.tasks.scheduler import ScanScheduler
@@ -34,23 +36,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise RuntimeError("Database readiness check failed")
         application.state.engine = engine
         application.state.session_factory = create_session_factory(engine)
+        application.state.backup_lock = asyncio.Lock()
         try:
+            runtime_settings = RuntimeSettingsService(
+                application.state.session_factory
+            ).load(resolved_settings)
+            application.state.settings = runtime_settings
             scan_history = ScanHistoryService(application.state.session_factory)
             scan_history.recover_interrupted_runs()
             initial_scan_snapshot = scan_history.latest_snapshot()
             application.state.scan_history = scan_history
             with application.state.session_factory() as session:
-                CompanyService(session).import_seed_file(resolved_settings.company_seed_path)
-            async with open_telegram_client(resolved_settings) as telegram_client:
+                CompanyService(session).import_seed_file(runtime_settings.company_seed_path)
+            async with open_telegram_client(runtime_settings) as telegram_client:
                 notification_service = NotificationService(
                     application.state.session_factory,
                     telegram_client,
-                    match_threshold=resolved_settings.telegram_match_threshold,
+                    match_threshold=runtime_settings.telegram_match_threshold,
                 )
                 scan_controller = ScanController(
                     ApplicationScanPipeline(
                         application.state.session_factory,
-                        resolved_settings,
+                        runtime_settings,
                         recommendation_notifier=notification_service,
                     ),
                     completion_notifier=notification_service,
@@ -59,7 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 scan_scheduler = ScanScheduler(
                     scan_controller,
-                    interval_hours=resolved_settings.scan_interval_hours,
+                    interval_hours=runtime_settings.scan_interval_hours,
                 )
                 application.state.notification_service = notification_service
                 application.state.scan_controller = scan_controller
@@ -78,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = resolved_settings
+    application.state.base_settings = resolved_settings
     application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     application.include_router(router)
     application.include_router(profiles_router)

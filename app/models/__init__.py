@@ -6,6 +6,7 @@ from app.models.jobs import Job
 from app.models.notifications import NotificationDestination, NotificationLog
 from app.models.profiles import CandidateProfile, ProfileSuggestion
 from app.models.resumes import Resume
+from app.models.runtime_settings import RuntimeSetting
 from app.models.scan_history import ScanRun, ScanSourceResult
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "NotificationLog",
     "ProfileSuggestion",
     "Resume",
+    "RuntimeSetting",
     "ScanRun",
     "ScanSourceResult",
 ]

@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M21 Logs / Scan Health.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M22 Backup / Restore.
 
 ## Requirements
 
@@ -42,6 +42,8 @@ The application starts one in-process scheduler with a four-hour default interva
 Telegram notifications are configured at <http://127.0.0.1:8000/settings/notifications>. Put `JOB_AGENT_TELEGRAM_BOT_TOKEN` only in the local `.env`, then configure and enable the separate chats for high-match recommendations, application activity, and search/run summaries. `JOB_AGENT_TELEGRAM_MATCH_THRESHOLD` defaults to 85 and accepts 0–100. The application starts normally without a token, never renders the token, and records delivery status for duplicate suppression and debugging.
 
 Persistent recent scan health is available at <http://127.0.0.1:8000/scans>. It retains manual and scheduled run outcomes and counts, plus bounded per-source failures and retry counts. The page loads at most the latest 25 runs and latest 50 source failures; an interrupted Running row is safely marked Failed when the application restarts.
+
+Backup and restore are available at <http://127.0.0.1:8000/settings/backup>. Export downloads one portable ZIP containing the SQLite state, stored resumes, and non-secret runtime settings. Restore validates the archive before atomically replacing local data and is unavailable during a scan. API keys, the Telegram bot token, `.env`, and machine-specific database/storage paths are excluded; keep the archive secure because it contains personal job-search and resume data. Restart Job Agent after a successful restore.
 
 AI matching is disabled by default, so the application still starts without credentials. To configure M15 matching, set `JOB_AGENT_AI_PROVIDER` to `openai`, `anthropic`, or `gemini`, set `JOB_AGENT_AI_MODEL`, and provide only the corresponding API key in the local `.env`. Never commit that file.
 
@@ -109,4 +111,10 @@ pytest tests/module/test_m20_telegram.py
 
 ```bash
 pytest tests/module/test_m21_scan_history.py
+```
+
+## M22 Focused Tests
+
+```bash
+pytest tests/module/test_m22_backup_restore.py
 ```

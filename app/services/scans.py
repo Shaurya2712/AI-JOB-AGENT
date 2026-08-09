@@ -423,6 +423,7 @@ class ScanController:
         self.completion_notifier = completion_notifier
         self.history_writer = history_writer
         self._guard = asyncio.Lock()
+        self._suspended = False
         self._task: asyncio.Task[ScanRunSnapshot] | None = None
         self._snapshot = initial_snapshot or ScanRunSnapshot()
 
@@ -457,9 +458,22 @@ class ScanController:
         except asyncio.CancelledError:
             pass
 
-    async def _start(self, trigger_type: ScanTrigger) -> bool:
+    async def suspend_if_idle(self) -> bool:
         async with self._guard:
             if self._task is not None and not self._task.done():
+                return False
+            self._suspended = True
+            return True
+
+    async def resume(self) -> None:
+        async with self._guard:
+            self._suspended = False
+
+    async def _start(self, trigger_type: ScanTrigger) -> bool:
+        async with self._guard:
+            if self._suspended or (
+                self._task is not None and not self._task.done()
+            ):
                 return False
             started_at = utc_now()
             run_id = (

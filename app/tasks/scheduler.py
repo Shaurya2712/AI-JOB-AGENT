@@ -43,6 +43,14 @@ class ScanScheduler:
             next_run_at=job.next_run_time if job is not None else None,
         )
 
+    def pause(self) -> None:
+        if self.scheduler.running:
+            self.scheduler.pause()
+
+    def resume(self) -> None:
+        if self.scheduler.running:
+            self.scheduler.resume()
+
     def shutdown(self) -> None:
         if self.scheduler.running:
             self.scheduler.shutdown(wait=False)

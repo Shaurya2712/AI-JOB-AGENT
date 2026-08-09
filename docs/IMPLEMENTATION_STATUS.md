@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M21 Logs / Scan Health are complete. M22 has not started.
+M01 Project Foundation through M22 Backup / Restore are complete. M23 Final System Verification has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -120,6 +120,8 @@ M20 added no dependency; Telegram delivery reuses the architecture-approved `htt
 
 M21 added no dependency; persistent run/source health uses the existing SQLite, SQLAlchemy, Alembic, FastAPI, and Jinja2 stack, with standard-library task-local counters for connector retry instrumentation.
 
+M22 added no dependency; portable ZIP creation, SQLite online snapshots, checksums, staging, and atomic file replacement use the Python standard library and the existing SQLAlchemy/Alembic stack.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -179,7 +181,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M19 Scheduler + Search Now | Configurable four-hour default, common pipeline, run visibility, overlap protection | Manual/scheduled paths match and concurrent scans are prevented | Complete |
 | M20 Telegram | Three destination types and notification idempotency | Recommendation, application, and summary events route correctly without duplicates | Complete |
 | M21 Logs / Scan Health | Run/source results, counts, failures, recent health | Successful, partial, and failed scans remain inspectable with bounded error details | Complete |
-| M22 Backup / Restore | Portable archive for DB-backed state, settings, and resume files | Round trip restores required data while excluding secrets | Pending |
+| M22 Backup / Restore | Portable archive for DB-backed state, settings, and resume files | Round trip restores required data while excluding secrets | Complete |
 | M23 Final System Verification | Frozen 21-step end-to-end workflow after M01–M22 pass | Run full workflow, macOS/Linux setup verification, restart/persistence check, and defect-only fixes | Final Verification |
 
 ## M01 Completion Record
@@ -1473,7 +1475,70 @@ Issues discovered:
 - `retry_count` represents actual connector HTTP retries during that company/source collection. It remains zero when no retry occurred; no extra retry layer was added.
 - Only the latest 25 runs and latest 50 source failures are loaded into the browser view to keep memory and query cost bounded. All run/source records remain in SQLite for the frozen backup and final verification workflows.
 - A hard process kill can leave one Running row because no process can finalize work after it is terminated. M21 resolves that state deterministically at the next application startup.
-- M22 remains responsible for one-archive backup/restore of the required local data and resume files. No M22 functionality was started.
+## M22 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- One browser-driven ZIP export containing a consistent SQLite online snapshot, every resume file referenced by the database, and a versioned JSON manifest with file sizes and SHA-256 checksums.
+- One confirmation-gated restore workflow that stages and validates the full archive before replacing local data. It validates archive paths and entry counts, expansion limits, manifest format/schema, checksums, SQLite integrity and foreign keys, required tables, migration revision, settings, and exact resume/database correspondence.
+- Atomic database and resume-directory replacement with local rollback copies. A failed validation leaves current data untouched; an installation failure restores the prior database and resume directory.
+- A small `settings` table for portable, non-secret runtime settings. Defaults restored from this table survive restart, while explicitly supplied local environment/constructor values retain precedence.
+- Explicit exclusion of API keys, Telegram bot token, `.env`, database URL, resume storage path, company seed path, and environment name. The archive remains portable between the specified macOS development and Linux deployment paths.
+- Restore coordination with the existing in-process scheduler and scan overlap guard. Scheduled starts are paused and new manual/scheduled scans are suspended during replacement; restore is rejected if a scan is already running.
+- Bounded archive handling: 512 MiB compressed upload/output, 2 GiB declared expansion, 10,000 entries, one MiB manifest, streamed upload/extraction/hashing, safe basename-only resume references, and rejection of traversal, duplicate, directory, symlink, encrypted, or unexpected ZIP entries.
+- A minimal Backup & Restore settings page linked to Telegram settings, with data-replacement confirmation, archive contents/exclusions, personal-data warning, error feedback, and post-restore restart guidance.
+- No scheduled retention, cloud destination, encryption/key management, incremental backups, multiple backup formats, auth, external storage service, or M23 final verification functionality.
+
+Files created:
+
+- `app/models/runtime_settings.py`
+- `app/services/backups.py`
+- `app/services/runtime_settings.py`
+- `app/web/templates/backup_settings.html`
+- `migrations/versions/20260809_0010_runtime_settings.py`
+- `tests/module/test_m22_backup_restore.py`
+
+Files changed:
+
+- `app/main.py`
+- `app/models/__init__.py`
+- `app/services/scans.py`
+- `app/tasks/scheduler.py`
+- `app/web/settings.py`
+- `app/web/static/styles.css`
+- `app/web/templates/notification_settings.html`
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest -q tests/module/test_m22_backup_restore.py` -> 3 passed.
+- One-archive round trip -> profiles, resumes and extracted text, companies, jobs, match results, Applied state/history, scan history, notification state, resume bytes, and portable runtime settings replaced the destination data and survived application restart.
+- Secret/path boundary -> source API keys and Telegram token were absent from both manifest and stored settings; database/storage paths were absent; the destination-local Telegram token remained configured after restore and restart.
+- Archive safety -> traversal and checksum-tampered archives returned HTTP 422 without changing the existing database or resumes or writing outside the staging area.
+- Scan coordination -> a restore attempted during a held scan returned HTTP 422, left current data intact, and did not interrupt the scan.
+- Directly affected M19 overlap check `.venv/bin/python -m pytest -q tests/module/test_m19_scheduler_scan.py::test_manual_and_scheduled_triggers_share_one_non_overlapping_pipeline` -> passed alongside the M22 tests (4 passed total).
+- Fresh SQLite migration round trip `upgrade head -> downgrade 20260809_0009 -> upgrade head` -> passed; Alembic reported `20260809_0010` and the `settings` table existed.
+- Targeted `.venv/bin/python -m compileall -q app migrations/versions/20260809_0010_runtime_settings.py tests/module/test_m22_backup_restore.py` -> passed.
+- `.venv/bin/python -m pip check` -> no broken requirements.
+- `git diff --check` -> passed.
+- The full application test suite was intentionally not run under the frozen testing policy.
+
+Acceptance result: all M22 acceptance criteria pass. One archive restores profiles, resume records/files, companies, jobs, match results, user/application state and history, scan/notification state, and portable settings while excluding secrets and machine-specific paths.
+
+Issues discovered:
+
+- The first focused round trip exposed SQLite's raw scalar JSON behavior during archive validation: numeric JSON values can be returned as integers rather than serialized text. Validation now accepts SQLite's native scalar result while still decoding textual JSON, and the complete round trip passes.
+- No unresolved archive consistency, portability, secret exclusion, path traversal, size-boundary, checksum, schema, foreign-key, rollback, scan-coordination, runtime-settings persistence, restart, or rendering issue remains.
+- Restore intentionally replaces the complete local database and resume directory, so the browser requires explicit confirmation. The application directs the user to restart after success so long-lived scheduler, provider, and notification service instances are rebuilt from restored settings.
+- The ZIP is not encrypted because the frozen scope does not require encryption or key management. It contains personal resume and job-search data and must be stored securely; secrets remain only in the destination's local environment.
 
 ## Execution Rules
 
@@ -1491,7 +1556,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M22 when explicitly requested.
+There are no genuine blockers recorded for M23, but M23 has not been started because this pass is explicitly limited to M22.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -1499,4 +1564,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M21. Do not begin M22 until explicitly requested.
+Stop after M22. Do not begin M23 until explicitly requested.

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Backup & Restore · {{ app_name }}{% endblock %}
+
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Settings · Backup</p>
+      <h1>Keep your local search portable.</h1>
+      <p class="page-intro">Export one archive containing the database, resume files, and portable non-secret settings. Move it between macOS and Linux without carrying credentials or machine-specific paths.</p>
+    </div>
+    <a class="button button--secondary" href="/settings/notifications">Telegram settings</a>
+  </header>
+
+  {% if restored %}
+    <div class="notice notice--success" role="status">
+      <strong>Backup restored.</strong> Restart Job Agent before continuing so the scheduler and all services load the restored settings and latest state.
+    </div>
+  {% endif %}
+  {% if backup_error %}
+    <div class="notice notice--error" role="alert">{{ backup_error }}</div>
+  {% endif %}
+
+  <section class="editorial-section" aria-labelledby="export-title">
+    <header class="section-header">
+      <p class="section-number">Section 01</p>
+      <div>
+        <h2 id="export-title">Export</h2>
+        <p>Creates a consistent snapshot while the application remains available.</p>
+      </div>
+    </header>
+    <div class="backup-panel">
+      <h3>One portable ZIP archive</h3>
+      <p>Includes profiles, companies, jobs, match results, user/application state, scan history, notification settings/logs, resume records and files, and approved non-secret runtime settings.</p>
+      <p class="muted-copy">API keys, Telegram bot token, `.env`, database paths, and storage paths are excluded. The archive contains personal resume and job-search data; store it securely.</p>
+      <form method="post" action="/settings/backup/export">
+        <button class="button" type="submit">Download backup</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="editorial-section editorial-section--compact" aria-labelledby="restore-title">
+    <header class="section-header">
+      <p class="section-number">Section 02</p>
+      <div>
+        <h2 id="restore-title">Restore</h2>
+        <p>Validates format, checksums, schema, references, settings, and resume files before replacing current local data.</p>
+      </div>
+    </header>
+    <form class="backup-panel" method="post" action="/settings/backup/restore" enctype="multipart/form-data">
+      <label class="field">
+        <span>Job Agent backup ZIP</span>
+        <input type="file" name="backup_file" accept=".zip,application/zip" required>
+      </label>
+      <label class="checkbox-field backup-confirmation">
+        <input type="checkbox" name="confirm" value="replace" required>
+        I understand that restore replaces current local database and resume data.
+      </label>
+      <p class="muted-copy">Maximum archive size: {{ max_archive_mib }} MiB. Restore is unavailable while a scan is running. A restart is required after success.</p>
+      <button class="button" type="submit">Validate &amp; Restore</button>
+    </form>
+  </section>
+{% endblock %}
