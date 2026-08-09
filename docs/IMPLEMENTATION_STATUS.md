@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M05 Query Generation + Web Discovery are complete. M06 has not started.
+M01 Project Foundation through M06 ATS Detection are complete. M07 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -88,6 +88,8 @@ M04 added no dependency; seed loading and URL normalization use the standard lib
 
 M05 promoted the already-approved and already-installed `httpx` package from test-only to a direct runtime dependency because the Brave Search adapter imports it for outbound HTTP. No new package was installed.
 
+M06 added no dependency; ATS detection uses deterministic standard-library URL parsing and the existing SQLAlchemy company registry.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -131,7 +133,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M03 Resumes | Multiple local resumes per profile, safe TXT/PDF/DOCX extraction, primary selection | Extracted text is persisted and readable by matching; upload boundaries are enforced | Complete |
 | M04 Company Registry + Seeds | Company/provider metadata and seed import | Seed load is idempotent and preserves scan metadata | Complete |
 | M05 Query Generation + Web Discovery | Profile-derived queries, search abstraction, initial Brave Search adapter, persistent discoveries | Duplicate companies are avoided; discovery failure does not block known ATS scans | Complete |
-| M06 ATS Detection | Detect supported ATS types and safely classify recognized/unsupported sources | Fixture URLs classify correctly; unsupported sources are recorded and skipped | Pending |
+| M06 ATS Detection | Detect supported ATS types and safely classify recognized/unsupported sources | Fixture URLs classify correctly; unsupported sources are recorded and skipped | Complete |
 | M07 Greenhouse Connector | Fetch and normalize open Greenhouse jobs behind the connector contract | Deterministic fixtures validate mapping, pagination/error isolation as applicable | Pending |
 | M08 Lever Connector | Fetch and normalize open Lever jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Pending |
 | M09 Ashby Connector | Fetch and normalize open Ashby jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Pending |
@@ -442,6 +444,60 @@ Issues discovered:
 - Search results can point at shared career-host tenant paths instead of a corporate homepage. M05 stores a stable tenant URL identity without classifying its ATS; provider detection remains exclusively M06.
 - Web discovery is callable but intentionally not scheduled or exposed through the UI. The shared manual/scheduled trigger belongs to M19.
 
+## M06 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A deterministic, network-free ATS URL detector for Greenhouse, Lever, Ashby, and pragmatic Workday career-site URL shapes.
+- Provider identifier extraction for hosted job boards and their public API URL forms, including Greenhouse embed URLs, Lever global/EU hosts, Ashby job-board URLs, and Workday tenant/site paths.
+- Recognition of iCIMS and BambooHR as named unsupported ATS providers rather than misclassifying them as generic sources.
+- Recognition of ordinary company-hosted career pages as `custom`, reserved for the M11 generic career-page fallback.
+- Explicit `unknown` classification for missing, malformed, credential-bearing, or otherwise invalid source URLs.
+- Connector readiness only when a supported provider has a bounded, valid provider identifier. Supported-provider URLs without an identifier are recorded but safely skipped.
+- Persistent updates to the existing `provider_type`, `provider_identifier`, and `provider_supported` company fields, with no schema change.
+- Reuse and normalization of explicit stored ATS metadata from seed/earlier detection when it contains a recognized provider and usable identifier.
+- Active-company-only classification with an explicit decision for every checked company: connector-ready or skipped with a bounded reason.
+- Idempotent reruns that preserve company scan timestamps, successful-scan timestamps, job counts, discovery source, and active state.
+- No ATS HTTP requests, job fetching, connector contract, normalization, or Greenhouse connector behavior; M07 was not started.
+
+Files created:
+
+- `app/services/ats_detection.py`
+- `tests/module/test_m06_ats_detection.py`
+
+Files changed:
+
+- `app/repositories/companies.py`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `python -m pytest tests/module/test_m06_ats_detection.py` -> 15 passed
+- Supported fixture workflow -> Greenhouse, Lever, Ashby, and Workday hosted/API URL shapes produced the expected provider and board/tenant identifiers
+- Unsupported fixture workflow -> iCIMS, BambooHR, custom, malformed, and identifier-less sources remained connector-ineligible with explicit skip reasons
+- Registry workflow -> four active companies were classified, only two became connector-ready, two were safely skipped, and one inactive source was untouched
+- Persistence workflow -> classifications survived a repeated run while existing scan timestamps and job counts remained unchanged
+- `python -m compileall -q app/services/ats_detection.py app/repositories/companies.py tests/module/test_m06_ats_detection.py` -> passed
+- `python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M06 acceptance criteria pass. Deterministic fixture URLs classify into the required supported providers and recognized fallback/unsupported states, classifications persist in the company registry, and unsupported or unusable sources are returned as explicit skip decisions without raising or starting a connector.
+
+Issues discovered:
+
+- No M06 classification, persistence, or safe-skip failure remains.
+- URL-only detection cannot see an ATS embedded behind an unrelated corporate career-page URL. Such pages are intentionally recorded as `custom` for the bounded M11 fallback rather than fetched or guessed in M06.
+- Workday detection is deliberately limited to identifiable `myworkdayjobs.com` tenant/site URLs. Universal Workday discovery and collection are outside M06 and explicitly prohibited by the frozen M10 scope.
+- Explicit stored ATS metadata with a recognized provider and usable identifier is treated as authoritative, preserving the M04 seed/import boundary.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -458,7 +514,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M06 when explicitly requested.
+There are no genuine blockers to starting M07 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -466,4 +522,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M05. Do not begin M06 until explicitly requested.
+Stop after M06. Do not begin M07 until explicitly requested.
