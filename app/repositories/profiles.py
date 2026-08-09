@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.profiles import CandidateProfile, ProfileSuggestion
+from app.models.resumes import Resume
 
 
 class ProfileRepository:
@@ -11,7 +12,10 @@ class ProfileRepository:
     def list_profiles(self) -> list[CandidateProfile]:
         statement = (
             select(CandidateProfile)
-            .options(selectinload(CandidateProfile.suggestions))
+            .options(
+                selectinload(CandidateProfile.suggestions),
+                selectinload(CandidateProfile.resumes),
+            )
             .order_by(CandidateProfile.is_active.desc(), CandidateProfile.name, CandidateProfile.id)
         )
         return list(self.session.scalars(statement).all())
@@ -19,7 +23,10 @@ class ProfileRepository:
     def get_profile(self, profile_id: int, *, with_suggestions: bool = False) -> CandidateProfile | None:
         statement = select(CandidateProfile).where(CandidateProfile.id == profile_id)
         if with_suggestions:
-            statement = statement.options(selectinload(CandidateProfile.suggestions))
+            statement = statement.options(
+                selectinload(CandidateProfile.suggestions),
+                selectinload(CandidateProfile.resumes),
+            )
         return self.session.scalar(statement)
 
     def add_profile(self, profile: CandidateProfile) -> None:

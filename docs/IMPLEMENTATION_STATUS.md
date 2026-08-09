@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation and M02 Candidate Profiles are complete. M03 has not started.
+M01 Project Foundation, M02 Candidate Profiles, and M03 Resumes are complete. M04 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -82,6 +82,8 @@ M01 added only `alembic`, `fastapi`, `jinja2`, `pydantic-settings`, `sqlalchemy`
 
 M02 added `pydantic` as a direct validation dependency and `python-multipart` for browser form parsing. Both were already explicitly approved by the frozen architecture and no other dependencies were added.
 
+M03 added `pypdf` and `python-docx` for bounded text extraction from the approved resume formats. No other direct dependency was added.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -122,7 +124,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 |---|---|---|---|
 | M01 Project Foundation | FastAPI, config, SQLite, migrations, templates, theme tokens, health endpoint, `.env.example` | Start command works; dashboard shell and health load; DB migrates; zero credentials required | Complete |
 | M02 Candidate Profiles | Multiple profiles and approval-gated AI role/skill suggestions | Multiple profiles may be active; accepting/rejecting suggestions is explicit; pending suggestions never mutate profiles | Complete |
-| M03 Resumes | Multiple local resumes per profile, safe TXT/PDF/DOCX extraction, primary selection | Extracted text is persisted and readable by matching; upload boundaries are enforced | Pending |
+| M03 Resumes | Multiple local resumes per profile, safe TXT/PDF/DOCX extraction, primary selection | Extracted text is persisted and readable by matching; upload boundaries are enforced | Complete |
 | M04 Company Registry + Seeds | Company/provider metadata and seed import | Seed load is idempotent and preserves scan metadata | Pending |
 | M05 Query Generation + Web Discovery | Profile-derived queries, search abstraction, initial Brave Search adapter, persistent discoveries | Duplicate companies are avoided; discovery failure does not block known ATS scans | Pending |
 | M06 ATS Detection | Detect supported ATS types and safely classify recognized/unsupported sources | Fixture URLs classify correctly; unsupported sources are recorded and skipped | Pending |
@@ -256,6 +258,70 @@ Issues discovered:
 - Browser form parsing required the explicitly approved lightweight `python-multipart` dependency; no other new runtime infrastructure was needed.
 - AI suggestion generation is intentionally absent until M15; M02 provides only persistence and approval/rejection behavior.
 
+## M03 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- Multiple resume records per candidate profile with display name, controlled storage reference, extracted text, primary state, and timestamps.
+- Local TXT, PDF, and DOCX upload and text extraction. DOCX extraction includes paragraph and table text.
+- A configurable 5 MiB default upload limit, generated UUID storage names, a configured storage root, and no file execution or public file-serving route.
+- Bounded PDF parsing with signature validation, encrypted-file rejection, and a 100-page maximum.
+- Bounded DOCX parsing with archive validation, a 500-entry maximum, and a 25 MiB decompressed-size maximum.
+- A one-million-character extracted-text limit before SQLite persistence.
+- Safe first-upload primary behavior, optional primary selection during upload, later explicit primary switching, and a database partial unique index enforcing at most one primary resume per profile.
+- A resume service method that returns persisted extracted text by profile/resume identity for the future matching module.
+- Resume upload, list, extracted-character count, primary badge, and Make Primary controls within the existing Profiles page.
+- Alembic revision `20260809_0003` for the M03 `resumes` table only. No company or M04 table was created.
+
+Files created:
+
+- `app/models/resumes.py`
+- `app/schemas/resumes.py`
+- `app/repositories/resumes.py`
+- `app/services/resume_files.py` and `app/services/resumes.py`
+- `migrations/versions/20260809_0003_resumes.py`
+- `tests/module/test_m03_resumes.py`
+
+Files changed:
+
+- `.env.example`, `.gitignore`, `pyproject.toml`, `app/config.py`, and `app/models/__init__.py`
+- `app/models/profiles.py` and `app/repositories/profiles.py`
+- `app/web/profiles.py`, `app/web/templates/profiles.html`, and `app/web/static/styles.css`
+- `README.md` and `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: `pypdf` and `python-docx`
+- Transitive through `python-docx`: `lxml`
+- Test: none; deterministic TXT/PDF/DOCX fixtures use the existing runtime and test packages
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `python -m pytest tests/module/test_m03_resumes.py` -> 2 passed
+- Format workflow -> TXT, PDF, and DOCX uploads persisted separately and produced expected extracted text
+- Primary workflow -> first upload became primary, ordinary later upload preserved it, requested/explicit changes left exactly one primary
+- Matching-read workflow -> `ResumeService.get_extracted_text` returned the persisted resume text
+- Storage-safety workflow -> path-like client filename became a generated basename inside the configured directory
+- Rejection workflow -> unsupported and oversized uploads returned HTTP 422 with no row or stored file
+- `alembic upgrade head` against a temporary database -> `20260809_0003 (head)`
+- `alembic check` against the migrated database -> no new upgrade operations detected
+- Migrated tables -> `alembic_version`, `candidate_profiles`, `profile_suggestions`, and `resumes` only
+- `python -m pip check` -> no broken requirements
+- `python -m compileall -q app migrations tests/module/test_m03_resumes.py` -> passed
+- `git diff --check` -> passed
+
+Acceptance result: all M03 acceptance criteria pass. Each profile can store multiple local resumes, TXT/PDF/DOCX text is extracted and persisted, one resume can be selected as primary, and the future matching layer can retrieve extracted text through the resume service.
+
+Issues discovered:
+
+- No M03 test, extraction, persistence, or migration failure remains.
+- Final review found that re-selecting the already-primary resume could clear its database flag after the bulk reset. Primary assignment now uses an explicit database update, and the focused test covers repeated selection.
+- DOCX support necessarily adds the `lxml` transitive dependency through `python-docx`; it is used only during bounded upload-time extraction and does not add a background process.
+- Legacy `.doc`, image-only/OCR resumes, download/delete actions, and automatic submission are intentionally absent because they are not required by frozen M03 scope.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -272,7 +338,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M03 when explicitly requested.
+There are no genuine blockers to starting M04 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -280,4 +346,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M02. Do not begin M03 until explicitly requested.
+Stop after M03. Do not begin M04 until explicitly requested.

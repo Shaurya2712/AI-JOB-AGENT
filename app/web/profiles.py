@@ -2,11 +2,11 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
-from starlette.datastructures import FormData
+from starlette.datastructures import FormData, UploadFile
 
 from app.models.profiles import CandidateProfile
 from app.schemas.profiles import (
@@ -15,7 +15,10 @@ from app.schemas.profiles import (
     CandidateProfileInput,
     parse_entries,
 )
+from app.schemas.resumes import ResumeMetadataInput
 from app.services.profiles import ProfileNotFoundError, ProfileService, SuggestionNotPendingError
+from app.services.resume_files import ResumeFileError, ResumeFileStorage
+from app.services.resumes import ResumeNotFoundError, ResumeService
 from app.web.dependencies import get_session
 from app.web.routes import TEMPLATES_DIR
 
@@ -25,10 +28,12 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
 def _base_context(request: Request) -> dict[str, object]:
+    settings = request.app.state.settings
     return {
         "request": request,
-        "app_name": request.app.state.settings.app_name,
+        "app_name": settings.app_name,
         "active_nav": "profiles",
+        "resume_max_mib": settings.resume_max_bytes / (1024 * 1024),
     }
 
 
@@ -133,11 +138,37 @@ def _render_form(
     )
 
 
+def _render_profiles(
+    request: Request,
+    session: Session,
+    *,
+    resume_error: str | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    context = _base_context(request)
+    context.update(
+        {
+            "profiles": ProfileService(session).list_profiles(),
+            "resume_error": resume_error,
+        }
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="profiles.html",
+        context=context,
+        status_code=status_code,
+    )
+
+
+def _resume_service(request: Request, session: Session) -> ResumeService:
+    settings = request.app.state.settings
+    storage = ResumeFileStorage(settings.resume_storage_path, settings.resume_max_bytes)
+    return ResumeService(session, storage)
+
+
 @router.get("", response_class=HTMLResponse, name="profiles")
 def profiles(request: Request, session: Session = Depends(get_session)) -> HTMLResponse:
-    context = _base_context(request)
-    context["profiles"] = ProfileService(session).list_profiles()
-    return templates.TemplateResponse(request=request, name="profiles.html", context=context)
+    return _render_profiles(request, session)
 
 
 @router.get("/new", response_class=HTMLResponse, name="new_profile")
@@ -219,3 +250,68 @@ def decide_profile_suggestion(
     except SuggestionNotPendingError:
         return HTMLResponse("Suggestion has already been decided", status_code=409)
     return RedirectResponse(url=f"/profiles#profile-{profile_id}", status_code=303)
+
+
+@router.post("/{profile_id}/resumes", name="upload_resume")
+async def upload_resume(
+    profile_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> Response:
+    settings = request.app.state.settings
+    form = await request.form(
+        max_files=1,
+        max_fields=3,
+        max_part_size=settings.resume_max_bytes + 1,
+    )
+    upload = form.get("resume_file")
+    if not isinstance(upload, UploadFile) or not upload.filename:
+        return _render_profiles(
+            request,
+            session,
+            resume_error="Choose a TXT, PDF, or DOCX resume file",
+            status_code=422,
+        )
+
+    try:
+        content = await upload.read(settings.resume_max_bytes + 1)
+        metadata = ResumeMetadataInput(name=str(form.get("resume_name", "")))
+        _resume_service(request, session).add_resume(
+            profile_id,
+            metadata,
+            upload.filename,
+            content,
+            make_primary=form.get("make_primary") == "on",
+        )
+    except ProfileNotFoundError:
+        return HTMLResponse("Profile not found", status_code=404)
+    except (ResumeFileError, ValidationError) as error:
+        message = (
+            _validation_messages(error)[0]
+            if isinstance(error, ValidationError)
+            else str(error)
+        )
+        return _render_profiles(
+            request,
+            session,
+            resume_error=message,
+            status_code=422,
+        )
+    finally:
+        await upload.close()
+
+    return RedirectResponse(url=f"/profiles#resumes-{profile_id}", status_code=303)
+
+
+@router.post("/{profile_id}/resumes/{resume_id}/primary", name="set_primary_resume")
+def set_primary_resume(
+    profile_id: int,
+    resume_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> Response:
+    try:
+        _resume_service(request, session).set_primary(profile_id, resume_id)
+    except ResumeNotFoundError:
+        return HTMLResponse("Resume not found", status_code=404)
+    return RedirectResponse(url=f"/profiles#resumes-{profile_id}", status_code=303)

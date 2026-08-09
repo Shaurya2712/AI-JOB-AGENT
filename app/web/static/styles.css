@@ -341,9 +341,11 @@ a:focus-visible {
 
 .profile-record__header,
 .profile-record__actions,
+.resume-row,
 .suggestion-row,
 .suggestion-row__actions,
 .suggestions__heading,
+.resumes__heading,
 .form-actions {
   display: flex;
   align-items: center;
@@ -351,6 +353,11 @@ a:focus-visible {
 
 .profile-record__header,
 .suggestions__heading {
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+.resumes__heading {
   justify-content: space-between;
   gap: var(--space-6);
 }
@@ -432,7 +439,8 @@ a:focus-visible {
 }
 
 .profile-columns h3,
-.suggestions h3 {
+.suggestions h3,
+.resumes h3 {
   margin-bottom: var(--space-3);
   font-size: 0.75rem;
   letter-spacing: 0.1em;
@@ -458,6 +466,8 @@ a:focus-visible {
 
 .muted-copy,
 .profile-notes,
+.resumes__heading p,
+.resume-row p:last-child,
 .suggestions__heading p,
 .suggestion-row p:last-child {
   color: var(--color-text-muted);
@@ -472,6 +482,51 @@ a:focus-visible {
   margin-top: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
+}
+
+.resumes {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+
+.resumes__heading p {
+  margin-bottom: var(--space-3);
+}
+
+.resume-upload {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(13rem, 1.5fr) auto auto;
+  align-items: end;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.resume-upload .checkbox-field,
+.resume-upload .button {
+  min-height: 2.75rem;
+}
+
+.resume-list {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.resume-row {
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.resume-row p {
+  margin-bottom: var(--space-1);
+}
+
+.resume-row form {
+  margin: 0;
 }
 
 .suggestions__heading p {
@@ -676,6 +731,7 @@ a:focus-visible {
   }
 
   .profile-columns,
+  .resume-upload,
   .field-grid--two,
   .field-grid--salary {
     grid-template-columns: 1fr;
@@ -703,6 +759,8 @@ a:focus-visible {
 
   .profile-record__header,
   .profile-record__actions,
+  .resumes__heading,
+  .resume-row,
   .suggestions__heading,
   .suggestion-row {
     align-items: flex-start;

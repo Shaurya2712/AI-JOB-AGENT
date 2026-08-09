@@ -2,11 +2,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "job_agent.db"
+DEFAULT_RESUME_STORAGE_PATH = PROJECT_ROOT / "data" / "resumes"
 
 
 class Settings(BaseSettings):
@@ -14,6 +16,8 @@ class Settings(BaseSettings):
     environment: Literal["local", "test", "production"] = "local"
     database_url: str = f"sqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"
     log_level: str = "INFO"
+    resume_storage_path: Path = DEFAULT_RESUME_STORAGE_PATH
+    resume_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=25 * 1024 * 1024)
 
     model_config = SettingsConfigDict(
         env_prefix="JOB_AGENT_",

@@ -1,11 +1,15 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, utc_now
+
+
+if TYPE_CHECKING:
+    from app.models.resumes import Resume
 
 
 SuggestionType = Literal["skill", "role"]
@@ -35,6 +39,11 @@ class CandidateProfile(Base):
         back_populates="profile",
         cascade="all, delete-orphan",
         order_by=lambda: ProfileSuggestion.id.desc(),
+    )
+    resumes: Mapped[list["Resume"]] = relationship(
+        "Resume",
+        back_populates="profile",
+        cascade="all, delete-orphan",
     )
 
 

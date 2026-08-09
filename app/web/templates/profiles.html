@@ -12,6 +12,12 @@
     <a class="button" href="/profiles/new">New Profile</a>
   </section>
 
+  {% if resume_error %}
+    <div class="inline-alert" role="alert">
+      <p><strong>Resume upload failed.</strong> {{ resume_error }}</p>
+    </div>
+  {% endif %}
+
   {% if profiles %}
     <div class="profile-list">
       {% for profile in profiles %}
@@ -67,6 +73,54 @@
           {% if profile.notes %}
             <p class="profile-notes"><strong>Notes</strong> {{ profile.notes }}</p>
           {% endif %}
+
+          <section class="resumes" id="resumes-{{ profile.id }}" aria-labelledby="resumes-title-{{ profile.id }}">
+            <div class="resumes__heading">
+              <div>
+                <h3 id="resumes-title-{{ profile.id }}">Resumes</h3>
+                <p>TXT, PDF, or DOCX up to {{ resume_max_mib|round(1) }} MiB. The first upload becomes primary.</p>
+              </div>
+            </div>
+
+            <form class="resume-upload" method="post" action="/profiles/{{ profile.id }}/resumes" enctype="multipart/form-data">
+              <label class="field">
+                <span>Resume name</span>
+                <input name="resume_name" maxlength="120" required placeholder="Mobile engineering resume">
+              </label>
+              <label class="field">
+                <span>Resume file</span>
+                <input type="file" name="resume_file" accept=".txt,.pdf,.docx" required>
+              </label>
+              <label class="checkbox-field">
+                <input type="checkbox" name="make_primary">
+                <span>Make primary</span>
+              </label>
+              <button class="button button--small" type="submit">Add Resume</button>
+            </form>
+
+            {% if profile.resumes %}
+              <div class="resume-list">
+                {% for resume in profile.resumes %}
+                  <div class="resume-row">
+                    <div>
+                      <p>
+                        <strong>{{ resume.name }}</strong>
+                        {% if resume.is_primary %}<span class="badge badge--success">Primary</span>{% endif %}
+                      </p>
+                      <p>{{ resume.file_path.rsplit('.', 1)[-1]|upper }} · {{ resume.extracted_text|length }} extracted characters</p>
+                    </div>
+                    {% if not resume.is_primary %}
+                      <form method="post" action="/profiles/{{ profile.id }}/resumes/{{ resume.id }}/primary">
+                        <button class="button button--small button--secondary" type="submit">Make Primary</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted-copy">No resumes uploaded.</p>
+            {% endif %}
+          </section>
 
           <section class="suggestions" aria-labelledby="suggestions-{{ profile.id }}">
             <div class="suggestions__heading">
