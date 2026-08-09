@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation, M02 Candidate Profiles, and M03 Resumes.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M04 Company Registry + Seeds.
 
 ## Requirements
 
@@ -30,6 +30,8 @@ uvicorn app.main:app --reload
 Open <http://127.0.0.1:8000>. The SQLite database is created and migrated automatically during application startup. The health endpoint is available at <http://127.0.0.1:8000/health>.
 
 Candidate profiles can be created and edited at <http://127.0.0.1:8000/profiles>. Multiple profiles may remain active, and stored AI role/skill suggestions require an explicit accept or reject decision before they can change a profile. Each profile can store multiple local TXT, PDF, or DOCX resumes and select one primary resume.
+
+The local company registry is available at <http://127.0.0.1:8000/companies>. The bundled company seed file is imported idempotently at startup; provider detection and web discovery are not part of the current module.
 
 To apply migrations without starting the web application:
 

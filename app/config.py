@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "job_agent.db"
 DEFAULT_RESUME_STORAGE_PATH = PROJECT_ROOT / "data" / "resumes"
+DEFAULT_COMPANY_SEED_PATH = PROJECT_ROOT / "data" / "seeds" / "companies.json"
 
 
 class Settings(BaseSettings):
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     resume_storage_path: Path = DEFAULT_RESUME_STORAGE_PATH
     resume_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=25 * 1024 * 1024)
+    company_seed_path: Path = DEFAULT_COMPANY_SEED_PATH
 
     model_config = SettingsConfigDict(
         env_prefix="JOB_AGENT_",

@@ -1,0 +1,32 @@
+[
+  {
+    "name": "BrowserStack",
+    "website_url": "https://www.browserstack.com",
+    "careers_url": "https://www.browserstack.com/careers"
+  },
+  {
+    "name": "Chargebee",
+    "website_url": "https://www.chargebee.com",
+    "careers_url": "https://www.chargebee.com/careers"
+  },
+  {
+    "name": "Freshworks",
+    "website_url": "https://www.freshworks.com",
+    "careers_url": "https://www.freshworks.com/company/careers"
+  },
+  {
+    "name": "Meesho",
+    "website_url": "https://www.meesho.io",
+    "careers_url": "https://www.meesho.io/jobs"
+  },
+  {
+    "name": "Postman",
+    "website_url": "https://www.postman.com",
+    "careers_url": "https://www.postman.com/company/careers/open-positions"
+  },
+  {
+    "name": "Razorpay",
+    "website_url": "https://razorpay.com",
+    "careers_url": "https://razorpay.com/careers"
+  }
+]

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Companies · {{ app_name }}{% endblock %}
+
+{% block content %}
+  <section class="page-header" aria-labelledby="page-title">
+    <div>
+      <p class="eyebrow">Job search / Sources</p>
+      <h1 id="page-title">Company Registry</h1>
+      <p class="page-intro">Known company career pages are stored locally and reused by future scans.</p>
+    </div>
+  </section>
+
+  <section class="table-section" aria-labelledby="registry-title">
+    <header class="table-section__header">
+      <div>
+        <p class="section-number">Section 01</p>
+        <h2 id="registry-title">Tracked Companies</h2>
+      </div>
+      <p>{{ companies|length }} companies</p>
+    </header>
+
+    {% if companies %}
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Company</th>
+              <th scope="col">Career Page</th>
+              <th scope="col">Provider</th>
+              <th scope="col">Support Status</th>
+              <th scope="col">Last Scan</th>
+              <th scope="col">Jobs</th>
+              <th scope="col">Health</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for company in companies %}
+              <tr>
+                <td>
+                  <strong>{{ company.name }}</strong>
+                  {% if not company.is_active %}<span class="badge badge--muted">Inactive</span>{% endif %}
+                  <span class="table-subtext">{{ company.discovery_source }}</span>
+                </td>
+                <td>
+                  {% if company.careers_url %}
+                    <a class="text-link" href="{{ company.careers_url }}" target="_blank" rel="noopener noreferrer">Open careers</a>
+                  {% else %}
+                    <span class="muted-copy">Not found</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {{ company.provider_type|capitalize if company.provider_type else 'Unknown' }}
+                  {% if company.provider_identifier %}<span class="table-subtext">{{ company.provider_identifier }}</span>{% endif %}
+                </td>
+                <td>
+                  {% if not company.provider_type %}
+                    <span class="badge badge--muted">Pending detection</span>
+                  {% elif company.provider_supported %}
+                    <span class="badge badge--success">Supported</span>
+                  {% else %}
+                    <span class="badge badge--muted">Unsupported</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if company.last_scanned_at %}
+                    {{ company.last_scanned_at.strftime('%Y-%m-%d %H:%M') }}
+                  {% else %}
+                    <span class="muted-copy">Never</span>
+                  {% endif %}
+                </td>
+                <td>{{ company.total_jobs_seen }}</td>
+                <td>
+                  {% if company.last_success_at %}
+                    <span class="badge badge--success">Last scan succeeded</span>
+                  {% else %}
+                    <span class="badge badge--muted">Not scanned</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <p class="empty-state__label">No sources</p>
+        <h3>No companies are registered.</h3>
+        <p>Verify the configured seed dataset and restart the application.</p>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

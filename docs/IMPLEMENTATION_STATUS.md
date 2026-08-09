@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation, M02 Candidate Profiles, and M03 Resumes are complete. M04 has not started.
+M01 Project Foundation through M04 Company Registry + Seeds are complete. M05 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -84,6 +84,8 @@ M02 added `pydantic` as a direct validation dependency and `python-multipart` fo
 
 M03 added `pypdf` and `python-docx` for bounded text extraction from the approved resume formats. No other direct dependency was added.
 
+M04 added no dependency; seed loading and URL normalization use the standard library with existing Pydantic/SQLAlchemy validation and persistence.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -125,7 +127,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M01 Project Foundation | FastAPI, config, SQLite, migrations, templates, theme tokens, health endpoint, `.env.example` | Start command works; dashboard shell and health load; DB migrates; zero credentials required | Complete |
 | M02 Candidate Profiles | Multiple profiles and approval-gated AI role/skill suggestions | Multiple profiles may be active; accepting/rejecting suggestions is explicit; pending suggestions never mutate profiles | Complete |
 | M03 Resumes | Multiple local resumes per profile, safe TXT/PDF/DOCX extraction, primary selection | Extracted text is persisted and readable by matching; upload boundaries are enforced | Complete |
-| M04 Company Registry + Seeds | Company/provider metadata and seed import | Seed load is idempotent and preserves scan metadata | Pending |
+| M04 Company Registry + Seeds | Company/provider metadata and seed import | Seed load is idempotent and preserves scan metadata | Complete |
 | M05 Query Generation + Web Discovery | Profile-derived queries, search abstraction, initial Brave Search adapter, persistent discoveries | Duplicate companies are avoided; discovery failure does not block known ATS scans | Pending |
 | M06 ATS Detection | Detect supported ATS types and safely classify recognized/unsupported sources | Fixture URLs classify correctly; unsupported sources are recorded and skipped | Pending |
 | M07 Greenhouse Connector | Fetch and normalize open Greenhouse jobs behind the connector contract | Deterministic fixtures validate mapping, pagination/error isolation as applicable | Pending |
@@ -322,6 +324,65 @@ Issues discovered:
 - DOCX support necessarily adds the `lxml` transitive dependency through `python-docx`; it is used only during bounded upload-time extraction and does not add a background process.
 - Legacy `.doc`, image-only/OCR resumes, download/delete actions, and automatic submission are intentionally absent because they are not required by frozen M03 scope.
 
+## M04 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- Persistent `companies` registry with company/website/career URLs, provider type/identifier/support state, discovery source, active state, last scan, last successful scan, total jobs seen, and timestamps.
+- A bundled six-company seed dataset focused on product companies with verified official career pages: BrowserStack, Chargebee, Freshworks, Meesho, Postman, and Razorpay.
+- Bounded, validated JSON seed loading with normalized absolute HTTP(S) URLs and a one-MiB seed-file limit.
+- Idempotent startup import keyed by normalized company website URL.
+- Repeat imports preserve active state, detected provider values, scan timestamps, successful-scan timestamps, and job counts; seed data only fills missing career/provider values.
+- A database uniqueness constraint preventing duplicate company website identities.
+- Server-rendered Companies navigation and a compact registry table showing career page, provider, support status, last scan, job count, and health placeholder.
+- Alembic revision `20260809_0004` for the M04 `companies` table only. No query-generation, discovery, or M05 persistence was added.
+
+Files created:
+
+- `app/models/companies.py`
+- `app/schemas/companies.py`
+- `app/repositories/companies.py`
+- `app/services/companies.py`
+- `app/web/companies.py` and `app/web/templates/companies.html`
+- `data/seeds/companies.json`
+- `migrations/versions/20260809_0004_companies.py`
+- `tests/module/test_m04_companies.py`
+
+Files changed:
+
+- `.env.example`, `app/config.py`, `app/main.py`, and `app/models/__init__.py`
+- `app/web/templates/base.html` and `app/web/static/styles.css`
+- `README.md` and `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `python -m pytest tests/module/test_m04_companies.py` -> 2 passed
+- Bundled-seed workflow -> six company rows loaded and rendered with all registry fields initialized
+- Idempotency workflow -> repeated startup plus explicit re-import remained at two fixture rows with `created=0` and `existing=2`
+- Metadata preservation -> provider type/identifier, scan timestamps, successful-scan timestamp, and total job count survived repeat imports
+- `alembic upgrade head` against a temporary database -> `20260809_0004 (head)`
+- `alembic check` against the migrated database -> no new upgrade operations detected
+- Migrated tables -> `alembic_version`, `candidate_profiles`, `companies`, `profile_suggestions`, and `resumes` only
+- `python -m pip check` -> no broken requirements
+- `python -m compileall -q app migrations tests/module/test_m04_companies.py` -> passed
+- `git diff --check` -> passed
+
+Acceptance result: all M04 acceptance criteria pass. Company records contain the frozen registry and scan metadata fields, the bundled seed imports automatically, repeated loads do not create duplicates, and later operational metadata is preserved.
+
+Issues discovered:
+
+- No M04 seed, persistence, page, test, or migration failure remains.
+- Seed ATS/provider values are intentionally unset even where a career page currently reveals a provider; provider detection belongs exclusively to M06.
+- M04 performs no network request during startup or tests. Web search, automatic company discovery, and generated queries remain deferred to M05.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -338,7 +399,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M04 when explicitly requested.
+There are no genuine blockers to starting M05 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -346,4 +407,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M03. Do not begin M04 until explicitly requested.
+Stop after M04. Do not begin M05 until explicitly requested.
