@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M22 Backup / Restore.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. M01 Project Foundation through M23 Final System Verification are complete.
 
 ## Requirements
 
@@ -118,3 +118,11 @@ pytest tests/module/test_m21_scan_history.py
 ```bash
 pytest tests/module/test_m22_backup_restore.py
 ```
+
+## M23 Final Workflow
+
+```bash
+pytest tests/final/test_m23_end_to_end.py
+```
+
+This command runs the frozen 21-step deterministic workflow. It uses local fixtures at external network boundaries and does not require live search, AI, or Telegram credentials.
