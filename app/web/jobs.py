@@ -3,11 +3,16 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.services.job_dashboard import JobDashboardService, JobFilters
+from app.services.job_details import (
+    JobDetailNotFoundError,
+    JobDetailService,
+    JobStateInputError,
+)
 from app.web.dependencies import get_session
 from app.web.routes import TEMPLATES_DIR
 
@@ -70,4 +75,64 @@ def jobs(
                 else None
             ),
         },
+    )
+
+
+@router.get("/{job_id}", response_class=HTMLResponse, name="job_detail")
+def job_detail(
+    job_id: int,
+    request: Request,
+    profile_id: Annotated[int | None, Query(gt=0)] = None,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    try:
+        detail = JobDetailService(session).get_detail(
+            job_id,
+            profile_id=profile_id,
+        )
+    except JobDetailNotFoundError:
+        return HTMLResponse("Job or profile not found", status_code=404)
+    return templates.TemplateResponse(
+        request=request,
+        name="job_detail.html",
+        context={
+            "app_name": request.app.state.settings.app_name,
+            "active_nav": "jobs",
+            "detail": detail,
+        },
+    )
+
+
+@router.post("/{job_id}/state", name="set_job_state")
+async def set_job_state(
+    job_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    form = await request.form()
+    try:
+        profile_id = int(str(form.get("profile_id", "")))
+        resume_value = str(form.get("resume_id", "")).strip()
+        resume_id = int(resume_value) if resume_value else None
+    except ValueError:
+        return HTMLResponse("Invalid profile or resume", status_code=422)
+    action = str(form.get("action", ""))
+    note = str(form.get("note", ""))
+    if profile_id <= 0 or (resume_id is not None and resume_id <= 0):
+        return HTMLResponse("Invalid profile or resume", status_code=422)
+    try:
+        JobDetailService(session).set_state(
+            job_id,
+            profile_id,
+            action,
+            resume_id=resume_id,
+            note=note,
+        )
+    except JobDetailNotFoundError:
+        return HTMLResponse("Job or profile not found", status_code=404)
+    except JobStateInputError as error:
+        return HTMLResponse(str(error), status_code=422)
+    return RedirectResponse(
+        url=f"/jobs/{job_id}?profile_id={profile_id}",
+        status_code=303,
     )

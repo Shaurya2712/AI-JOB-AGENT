@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M17 Daily Action Queue.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M18 Job Detail + State.
 
 ## Requirements
 
@@ -33,7 +33,7 @@ Candidate profiles can be created and edited at <http://127.0.0.1:8000/profiles>
 
 The local company registry is available at <http://127.0.0.1:8000/companies>. The bundled company seed file is imported idempotently at startup. Discovery, ATS detection, supported job-source connectors, normalization/deduplication, and lifecycle handling are implemented as application services; scan orchestration remains a later module.
 
-The paginated job reference is available at <http://127.0.0.1:8000/jobs>. It supports the frozen profile, role, score, location, source, lifecycle, user-state, salary, remote, posted-date, and discovered-date filters. User-state actions and job details remain disabled until M18.
+The paginated job reference is available at <http://127.0.0.1:8000/jobs>. It supports the frozen profile, role, score, location, source, lifecycle, user-state, salary, remote, posted-date, and discovered-date filters. Open a job to review its description, complete match breakdown, linked profile and suggested resume, then Save, Mark Applied, or Ignore it. Applied jobs may record a profile-owned resume and an optional note.
 
 The dashboard's Apply Today section ranks the strongest open scored jobs for active profiles, excluding jobs already applied to or ignored. Set `JOB_AGENT_DAILY_ACTION_TARGET` to change its default target of 10 (maximum 100).
 
@@ -79,4 +79,10 @@ pytest tests/module/test_m16_dashboard_filters.py
 
 ```bash
 pytest tests/module/test_m17_daily_action_queue.py
+```
+
+## M18 Focused Tests
+
+```bash
+pytest tests/module/test_m18_job_detail_state.py
 ```

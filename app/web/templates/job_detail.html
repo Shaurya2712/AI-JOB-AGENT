@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}{{ detail.job.title }} · {{ app_name }}{% endblock %}
+
+{% block content %}
+  <article class="job-detail" aria-labelledby="page-title">
+    <header class="job-detail__header">
+      <p class="eyebrow">Job / {{ detail.company.name }} / {{ detail.job.source_type }}</p>
+      <div class="job-detail__heading">
+        <div>
+          <h1 id="page-title">{{ detail.job.title }}</h1>
+          <p class="page-intro">
+            {{ detail.company.name }} · {{ detail.job.location_text or "Location not listed" }}
+            {% if detail.job.remote_type %} · {{ detail.job.remote_type }}{% endif %}
+          </p>
+        </div>
+        <a class="button" href="{{ detail.job.canonical_url }}" target="_blank" rel="noopener noreferrer">Open Original Job</a>
+      </div>
+      <div class="job-detail__context">
+        <span class="badge">{{ detail.job.lifecycle_status.replace('_', ' ') }}</span>
+        <span>Source: {{ detail.job.source_type }}</span>
+        <span>Posted: {{ detail.posted_date }}</span>
+        <span>Discovered: {{ detail.discovered_date }}</span>
+      </div>
+    </header>
+
+    {% if detail.profiles|length > 1 %}
+      <form class="profile-switcher" method="get" action="/jobs/{{ detail.job.id }}">
+        <label class="field">
+          <span>Linked profile</span>
+          <select name="profile_id">
+            {% for profile in detail.profiles %}
+              <option value="{{ profile.id }}"{% if detail.profile and detail.profile.id == profile.id %} selected{% endif %}>{{ profile.name }}{% if not profile.is_active %} · Inactive{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="button button--small button--secondary" type="submit">View match</button>
+      </form>
+    {% endif %}
+
+    {% if detail.match %}
+      <section class="match-hero" aria-labelledby="match-summary-title">
+        <p class="eyebrow">Match for {{ detail.profile.name }}</p>
+        <p class="match-hero__score">{{ detail.match.overall_score }}% <span>— {{ detail.match.recommendation_label }}</span></p>
+      </section>
+
+      <section class="reading-section" aria-labelledby="match-summary-title">
+        <p class="section-number">01 Match Summary</p>
+        <h2 id="match-summary-title">Why this role fits</h2>
+        <p>{{ detail.match.explanation }}</p>
+        <dl class="score-breakdown">
+          {% for label, score in [
+            ("Role", detail.match.role_score),
+            ("Skills", detail.match.skills_score),
+            ("Experience", detail.match.experience_score),
+            ("Location", detail.match.location_score),
+            ("Freshness", detail.match.freshness_score),
+            ("Seniority", detail.match.seniority_score),
+            ("Salary", detail.match.salary_score)
+          ] %}
+            <div><dt>{{ label }}</dt><dd>{{ score if score is not none else "N/A" }}{% if score is not none %}%{% endif %}</dd></div>
+          {% endfor %}
+        </dl>
+      </section>
+
+      <section class="reading-section reading-columns" aria-labelledby="skills-title">
+        <div>
+          <p class="section-number">02 Matching Skills</p>
+          <h2 id="skills-title">Matching skills</h2>
+          {% if detail.match.matching_skills_json %}
+            <ul class="tag-list">{% for skill in detail.match.matching_skills_json %}<li>{{ skill }}</li>{% endfor %}</ul>
+          {% else %}<p class="muted-copy">No matching skills were listed.</p>{% endif %}
+        </div>
+        <div>
+          <p class="section-number">03 Gaps / Concerns</p>
+          <h2>Missing skills and concerns</h2>
+          {% if detail.match.missing_skills_json or detail.match.concerns_json %}
+            <ul class="detail-list">
+              {% for skill in detail.match.missing_skills_json %}<li>Missing: {{ skill }}</li>{% endfor %}
+              {% for concern in detail.match.concerns_json %}<li>{{ concern }}</li>{% endfor %}
+            </ul>
+          {% else %}<p class="muted-copy">No gaps or concerns were listed.</p>{% endif %}
+        </div>
+      </section>
+    {% else %}
+      <section class="empty-state">
+        <p class="empty-state__label">Not scored</p>
+        <h3>No match is available for {{ detail.profile.name if detail.profile else "a profile" }}.</h3>
+        <p>The job details and state controls remain available.</p>
+      </section>
+    {% endif %}
+
+    <section class="reading-section" aria-labelledby="salary-title">
+      <p class="section-number">04 Salary &amp; Experience</p>
+      <h2 id="salary-title">Role facts</h2>
+      <dl class="job-facts">
+        <div><dt>Salary</dt><dd>{{ detail.salary_text }}</dd></div>
+        <div><dt>Experience</dt><dd>{{ detail.experience_text }}</dd></div>
+        <div><dt>Employment</dt><dd>{{ detail.job.employment_type or "Not listed" }}</dd></div>
+        <div><dt>Work mode</dt><dd>{{ detail.job.remote_type or "Not listed" }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="reading-section" aria-labelledby="description-title">
+      <p class="section-number">05 Job Description</p>
+      <h2 id="description-title">Job description</h2>
+      <div class="job-description">{{ detail.job.description or "No description was provided." }}</div>
+    </section>
+
+    <section class="state-panel" aria-labelledby="state-title">
+      <div>
+        <p class="eyebrow">Your decision</p>
+        <h2 id="state-title">State: {{ detail.state_name|title }}</h2>
+        {% if detail.profile %}<p>For {{ detail.profile.name }}</p>{% endif %}
+        {% if detail.user_state and detail.user_state.applied_at %}
+          <p class="muted-copy">Applied {{ detail.user_state.applied_at.strftime("%d %b %Y") }}</p>
+        {% endif %}
+      </div>
+      {% if detail.profile %}
+        <form class="state-form" method="post" action="/jobs/{{ detail.job.id }}/state">
+          <input type="hidden" name="profile_id" value="{{ detail.profile.id }}">
+          <div class="field-grid field-grid--two">
+            <label class="field">
+              <span>Applied resume (optional)</span>
+              <select name="resume_id">
+                <option value="">No resume recorded</option>
+                {% for resume in detail.resumes %}
+                  <option value="{{ resume.id }}"{% if detail.user_state and detail.user_state.resume_id == resume.id %} selected{% endif %}>{{ resume.name }}{% if resume.is_primary %} · Primary{% endif %}{% if detail.suggested_resume and detail.suggested_resume.id == resume.id %} · Suggested{% endif %}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field">
+              <span>Application note (optional)</span>
+              <textarea name="note" maxlength="5000" placeholder="Where or how you applied">{{ detail.user_state.note if detail.user_state and detail.user_state.note else "" }}</textarea>
+            </label>
+          </div>
+          {% if detail.suggested_resume %}<p class="muted-copy">Suggested resume: {{ detail.suggested_resume.name }}</p>{% endif %}
+          <div class="state-actions">
+            <button class="button button--secondary" type="submit" name="action" value="saved">Save</button>
+            <button class="button" type="submit" name="action" value="applied">Mark Applied</button>
+            <button class="button button--secondary" type="submit" name="action" value="ignored">Ignore</button>
+          </div>
+        </form>
+      {% else %}
+        <p>Create a candidate profile before recording a job state.</p>
+      {% endif %}
+    </section>
+  </article>
+{% endblock %}

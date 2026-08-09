@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M17 Daily Action Queue are complete. M18 has not started.
+M01 Project Foundation through M18 Job Detail + State are complete. M19 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -112,6 +112,8 @@ M16 added no dependency; dashboard queries, pagination, filtering, and the froze
 
 M17 added no dependency; the queue uses the existing typed settings, SQLAlchemy dashboard query, and server-rendered Jinja2 UI.
 
+M18 added no dependency and no migration; job details and state mutations use the existing FastAPI/Jinja2/SQLAlchemy stack and the frozen `job_user_state` schema introduced for M16 filtering.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -167,7 +169,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M15 AI Provider Layer + Matching | OpenAI/Anthropic/Gemini HTTP adapters, structured matching, suggestions, persistence | Malformed output cannot crash scans; unchanged jobs need not rescore; secrets/text boundaries are safe | Complete |
 | M16 Dashboard + Filters | Paginated job views, required metrics, filters, score labels | Open 85+ jobs are quickly findable; applied/ignored and location filters work | Complete |
 | M17 Daily Action Queue | Ranked configurable queue, default 10 | Only strongest open, relevant, unhandled jobs appear | Complete |
-| M18 Job Detail + State | Reading-oriented detail, original URL, Save/Applied/Ignore, resume/note | State persists across rediscovery and applied metadata is retained | Pending |
+| M18 Job Detail + State | Reading-oriented detail, original URL, Save/Applied/Ignore, resume/note | State persists across rediscovery and applied metadata is retained | Complete |
 | M19 Scheduler + Search Now | Configurable four-hour default, common pipeline, run visibility, overlap protection | Manual/scheduled paths match and concurrent scans are prevented | Pending |
 | M20 Telegram | Three destination types and notification idempotency | Recommendation, application, and summary events route correctly without duplicates | Pending |
 | M21 Logs / Scan Health | Run/source results, counts, failures, recent health | Successful, partial, and failed scans remain inspectable with bounded error details | Pending |
@@ -1186,6 +1188,69 @@ Issues discovered:
 - Queue relevance is represented by a persisted match for an active profile; no speculative relevance table, qualification persistence, or extra threshold was invented.
 - M18 remains responsible for job details and state mutations. M17 only reads the frozen state records introduced for M16 filters.
 
+## M18 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- An internal `/jobs/{job_id}` reading-oriented detail page; Jobs, Apply Today, and Strong Matches now link to it with the relevant profile instead of sending the user directly away from the application.
+- A separate `Open Original Job` action using the stored canonical URL with a new tab and `noopener noreferrer` boundary.
+- Complete frozen detail content: title, company, location/work mode, source, lifecycle, original URL, description, salary, experience, employment type, posted/discovered dates, linked profile, suggested resume, and current user state.
+- Complete M15 match presentation for the selected profile: overall score/label, all seven component scores plus nullable salary score, explanation, matching skills, missing skills, and concerns.
+- Active-first default profile selection, score ordering within active/inactive groups, and a compact profile switcher when multiple candidate profiles exist. Unscored jobs remain readable and state-capable without fabricating match data.
+- Profile-specific Save, Mark Applied, and Ignore mutations over the existing frozen `job_user_state` table, with one upserted row per job/profile and transactional commit/rollback behavior.
+- Optional application resume and note persistence. Resume identifiers are accepted only when they belong to the selected profile, notes are whitespace-trimmed and bounded to 5,000 characters, and the original applied timestamp is retained on repeated Applied updates.
+- Applied metadata remains retained if the current state later changes to Saved or Ignored, preserving the single-table application history available in frozen V1.
+- Internal job-list rows now carry the selected profile identifier so detail, match, state, and resume context remain aligned.
+- No M19 scheduler, Search Now action, scan orchestration, notification, new database schema, browser framework, or external integration.
+
+Files created:
+
+- `app/services/job_details.py`
+- `app/web/templates/job_detail.html`
+- `tests/module/test_m18_job_detail_state.py`
+
+Files changed:
+
+- `app/services/job_dashboard.py`
+- `app/web/jobs.py`
+- `app/web/templates/jobs.html`
+- `app/web/templates/dashboard.html`
+- `app/web/static/styles.css`
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m18_job_detail_state.py` -> 2 passed.
+- Detail workflow -> the internal job link opened a profile-aligned page containing company/location/source/original URL, full match summary and breakdown, skills/gaps/concerns, salary/experience, readable description, suggested resume, current state, and all three frozen actions.
+- Save workflow -> a New job created one profile-specific state row with state Saved and redirected back to the aligned detail page.
+- Applied workflow -> the same row changed to Applied and stored `applied_at`, the selected profile-owned resume, and the optional note.
+- Rediscovery workflow -> an M12 source-identity upsert updated the existing job description while retaining the same job ID and complete Applied state metadata; the refreshed detail page showed both the updated description and Applied state.
+- Ignore workflow -> the same row changed to Ignored after rediscovery without losing its prior application timestamp, resume, or note.
+- Resume-boundary workflow -> a resume owned by another profile returned HTTP 422 and did not alter the persisted state.
+- `.venv/bin/python -m compileall -q app/services/job_details.py app/services/job_dashboard.py app/web/jobs.py tests/module/test_m18_job_detail_state.py` -> passed.
+- `.venv/bin/python -m pip check` -> no broken requirements.
+- `git diff --check` -> passed.
+- No migration check was needed because M18 uses the already-migrated frozen state table without schema changes.
+- The full application test suite was intentionally not run under the frozen testing policy.
+
+Acceptance result: all M18 acceptance criteria pass. The detail page provides the required decision information and original URL; Save, Applied, and Ignore persist per job/profile; optional application resume/note metadata is validated and retained; and state survives a real rediscovery/upsert of the same job.
+
+Issues discovered:
+
+- No unresolved M18 detail, profile-selection, state-upsert, resume-ownership, rediscovery-persistence, or rendering failure remains.
+- Applied metadata is deliberately not erased when a user later selects Save or Ignore because the frozen schema has no separate application-history table and V1 requires application history to remain recoverable.
+- A job may be viewed and assigned a state even when it has no match. In that case the page clearly reports `Not scored`, selects the first active profile by default, and does not fabricate scores or recommendations.
+- The state form is available for inactive profiles only when that profile is explicitly selected; M18 preserves existing profile-linked history rather than silently remapping it.
+- M19 remains responsible for enabling Search Now, scheduling, overlap protection, and visible scan-run state.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -1202,7 +1267,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M18 when explicitly requested.
+There are no genuine blockers to starting M19 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -1210,4 +1275,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M17. Do not begin M18 until explicitly requested.
+Stop after M18. Do not begin M19 until explicitly requested.

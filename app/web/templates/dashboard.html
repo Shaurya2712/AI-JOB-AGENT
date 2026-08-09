@@ -70,7 +70,7 @@
                     <span class="score-label">{{ item.recommendation_label }}</span>
                   </td>
                   <td>
-                    <a class="job-title-link" href="{{ item.canonical_url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+                    <a class="job-title-link" href="/jobs/{{ item.id }}{% if item.profile_id %}?profile_id={{ item.profile_id }}{% endif %}">{{ item.title }}</a>
                     {% if item.profile_name %}<span class="table-subtext">{{ item.profile_name }}</span>{% endif %}
                   </td>
                   <td>{{ item.company_name }}</td>
@@ -125,7 +125,7 @@
                     <span class="table-subtext">{{ item.recommendation_label }}</span>
                   </td>
                   <td>
-                    <a class="job-title-link" href="{{ item.canonical_url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+                    <a class="job-title-link" href="/jobs/{{ item.id }}{% if item.profile_id %}?profile_id={{ item.profile_id }}{% endif %}">{{ item.title }}</a>
                     <span class="table-subtext">{{ item.source_type }}</span>
                   </td>
                   <td>{{ item.company_name }}</td>

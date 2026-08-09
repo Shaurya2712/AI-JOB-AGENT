@@ -36,6 +36,7 @@ class JobFilters:
 @dataclass(frozen=True)
 class JobListItem:
     id: int
+    profile_id: int | None
     title: str
     canonical_url: str
     company_name: str
@@ -321,6 +322,7 @@ class JobDashboardService:
     ) -> JobListItem:
         return JobListItem(
             id=job.id,
+            profile_id=match.profile_id if match is not None else None,
             title=job.title,
             canonical_url=job.canonical_url,
             company_name=company.name,

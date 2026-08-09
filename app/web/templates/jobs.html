@@ -131,7 +131,7 @@
                     <span class="muted-copy">Not scored</span>
                   {% endif %}
                 </td>
-                <td><a class="job-title-link" href="{{ item.canonical_url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a></td>
+                <td><a class="job-title-link" href="/jobs/{{ item.id }}{% if item.profile_id %}?profile_id={{ item.profile_id }}{% endif %}">{{ item.title }}</a></td>
                 <td>{{ item.company_name }}</td>
                 <td>
                   {{ item.location_text }}
