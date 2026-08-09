@@ -20,6 +20,14 @@ class ProfileRepository:
         )
         return list(self.session.scalars(statement).all())
 
+    def list_active_profiles(self) -> list[CandidateProfile]:
+        statement = (
+            select(CandidateProfile)
+            .where(CandidateProfile.is_active.is_(True))
+            .order_by(CandidateProfile.name, CandidateProfile.id)
+        )
+        return list(self.session.scalars(statement).all())
+
     def get_profile(self, profile_id: int, *, with_suggestions: bool = False) -> CandidateProfile | None:
         statement = select(CandidateProfile).where(CandidateProfile.id == profile_id)
         if with_suggestions:

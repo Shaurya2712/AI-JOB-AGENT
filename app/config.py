@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     resume_storage_path: Path = DEFAULT_RESUME_STORAGE_PATH
     resume_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=25 * 1024 * 1024)
     company_seed_path: Path = DEFAULT_COMPANY_SEED_PATH
+    search_provider: Literal["brave", "disabled"] = "brave"
+    brave_search_api_key: SecretStr | None = None
+    search_country: str = Field(default="IN", min_length=2, max_length=2)
+    search_language: str = Field(default="en", min_length=2, max_length=10)
+    search_results_per_query: int = Field(default=10, ge=1, le=20)
+    search_max_queries_per_run: int = Field(default=30, ge=1, le=100)
+    search_concurrency: int = Field(default=3, ge=1, le=5)
+    search_timeout_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
 
     model_config = SettingsConfigDict(
         env_prefix="JOB_AGENT_",

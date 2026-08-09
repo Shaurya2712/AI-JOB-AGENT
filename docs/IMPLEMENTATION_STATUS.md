@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M04 Company Registry + Seeds are complete. M05 has not started.
+M01 Project Foundation through M05 Query Generation + Web Discovery are complete. M06 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -86,6 +86,8 @@ M03 added `pypdf` and `python-docx` for bounded text extraction from the approve
 
 M04 added no dependency; seed loading and URL normalization use the standard library with existing Pydantic/SQLAlchemy validation and persistence.
 
+M05 promoted the already-approved and already-installed `httpx` package from test-only to a direct runtime dependency because the Brave Search adapter imports it for outbound HTTP. No new package was installed.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -128,7 +130,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M02 Candidate Profiles | Multiple profiles and approval-gated AI role/skill suggestions | Multiple profiles may be active; accepting/rejecting suggestions is explicit; pending suggestions never mutate profiles | Complete |
 | M03 Resumes | Multiple local resumes per profile, safe TXT/PDF/DOCX extraction, primary selection | Extracted text is persisted and readable by matching; upload boundaries are enforced | Complete |
 | M04 Company Registry + Seeds | Company/provider metadata and seed import | Seed load is idempotent and preserves scan metadata | Complete |
-| M05 Query Generation + Web Discovery | Profile-derived queries, search abstraction, initial Brave Search adapter, persistent discoveries | Duplicate companies are avoided; discovery failure does not block known ATS scans | Pending |
+| M05 Query Generation + Web Discovery | Profile-derived queries, search abstraction, initial Brave Search adapter, persistent discoveries | Duplicate companies are avoided; discovery failure does not block known ATS scans | Complete |
 | M06 ATS Detection | Detect supported ATS types and safely classify recognized/unsupported sources | Fixture URLs classify correctly; unsupported sources are recorded and skipped | Pending |
 | M07 Greenhouse Connector | Fetch and normalize open Greenhouse jobs behind the connector contract | Deterministic fixtures validate mapping, pagination/error isolation as applicable | Pending |
 | M08 Lever Connector | Fetch and normalize open Lever jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Pending |
@@ -383,6 +385,63 @@ Issues discovered:
 - Seed ATS/provider values are intentionally unset even where a career page currently reveals a provider; provider detection belongs exclusively to M06.
 - M04 performs no network request during startup or tests. Web search, automatic company discovery, and generated queries remain deferred to M05.
 
+## M05 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- Deterministic, case-insensitively deduplicated search-query generation from every active profile's target roles, role synonyms, preferred locations, and Remote work mode.
+- A configurable per-run query cap with stable ordering so target roles are searched before synonyms and preferred locations before Remote.
+- A small asynchronous web-search provider contract with explicit configured state and isolated provider errors.
+- A working Brave Search HTTP adapter using the documented web endpoint, token header, query/country/language/count parameters, and structured response shape.
+- Boundaries suitable for the target laptop: three concurrent requests by default (maximum five), ten results per query by default (maximum twenty), a 30-query default cap, bounded timeouts, a one-MiB response limit, and one retry only for transport failures or HTTP 5xx responses.
+- Environment-only Brave credentials through Pydantic `SecretStr`; an empty key produces an unconfigured provider state and no credential is included in discovery results/errors.
+- Defensive result validation, career-signal filtering, rejection of common job aggregators/social sources, removal of tracking parameters, and normalized company/career URL identities.
+- Persistent web discoveries in the existing company registry with `web:<provider>` provenance and M06 provider fields deliberately left unset.
+- Deduplication across repeated search results, `www` host variants, shared `jobs`/`boards` tenant paths, existing career URLs, existing registry domains, and subsequent discovery runs.
+- Failure isolation that returns the existing company registry unchanged when the search provider is disabled, unconfigured, or fails. That returned registry is the downstream input for the future ATS scan stage.
+- No discovery call at startup and no scheduler, Search Now route, ATS detection, connector, or new database table; those remain assigned to later modules.
+
+Files created:
+
+- `app/providers/__init__.py`
+- `app/providers/search/__init__.py`, `app/providers/search/base.py`, `app/providers/search/brave.py`, and `app/providers/search/factory.py`
+- `app/services/search_queries.py` and `app/services/web_discovery.py`
+- `tests/module/test_m05_discovery.py`
+
+Files changed:
+
+- `.env.example`, `pyproject.toml`, and `app/config.py`
+- `app/repositories/profiles.py`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: `httpx` moved from the optional test group to direct runtime dependencies; it was already approved by the architecture and installed for prior tests
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `python -m pytest tests/module/test_m05_discovery.py` -> 4 passed
+- Query workflow -> target roles, role synonyms, preferred locations, Remote mode, case-insensitive deduplication, active-profile filtering, deterministic ordering, and the run cap were exercised
+- Discovery workflow -> duplicate results from multiple queries created two company rows once; a repeat run created zero additional rows; tracking parameters and a LinkedIn result were excluded
+- Failure workflow -> a provider outage returned the seeded company registry as downstream scan input and did not raise out of discovery
+- Brave adapter workflow -> deterministic mock transport verified the official endpoint, token header, country/language/count parameters, one safe HTTP 5xx retry, and structured result parsing without a live network call
+- `python -m compileall -q app/providers app/services/search_queries.py app/services/web_discovery.py app/config.py app/repositories/profiles.py tests/module/test_m05_discovery.py` -> passed
+- `python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M05 acceptance criteria pass. Active profile data produces bounded web searches through an abstract provider, the Brave adapter is operational when configured, discovered company/career pages persist without duplicates, and provider failure leaves known registry companies available for later ATS scans.
+
+Issues discovered:
+
+- No M05 query-generation, provider, persistence, or failure-isolation failure remains.
+- A live Brave credential was neither available nor required. The provider contract is verified through an exact deterministic HTTP transport, and an empty key remains a safe unconfigured state.
+- Search results can point at shared career-host tenant paths instead of a corporate homepage. M05 stores a stable tenant URL identity without classifying its ATS; provider detection remains exclusively M06.
+- Web discovery is callable but intentionally not scheduled or exposed through the UI. The shared manual/scheduled trigger belongs to M19.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -399,7 +458,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M05 when explicitly requested.
+There are no genuine blockers to starting M06 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -407,4 +466,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M04. Do not begin M05 until explicitly requested.
+Stop after M05. Do not begin M06 until explicitly requested.
