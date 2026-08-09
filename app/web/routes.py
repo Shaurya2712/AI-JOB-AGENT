@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,8 @@ def dashboard(
     settings = request.app.state.settings
     service = JobDashboardService(session)
     daily_queue = service.daily_action_queue(target=settings.daily_action_target)
+    scan_run = request.app.state.scan_controller.snapshot()
+    scan_schedule = request.app.state.scan_scheduler.snapshot()
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -34,6 +36,9 @@ def dashboard(
             "active_nav": "dashboard",
             "metrics": service.metrics(apply_today=daily_queue.count),
             "daily_queue": daily_queue,
+            "scan_run": scan_run,
+            "scan_schedule": scan_schedule,
+            "scan_message": request.query_params.get("scan", ""),
             "strong_matches": service.list_jobs(
                 JobFilters(
                     min_score=STRONG_MATCH_MINIMUM,
@@ -42,6 +47,15 @@ def dashboard(
                 page=1,
             ).items[:5],
         },
+    )
+
+
+@router.post("/scans/search-now", include_in_schema=False)
+async def search_now(request: Request) -> RedirectResponse:
+    started = await request.app.state.scan_controller.start_manual()
+    return RedirectResponse(
+        url="/?scan=started" if started else "/?scan=already-running",
+        status_code=303,
     )
 
 

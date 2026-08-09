@@ -8,6 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from app.config import Settings, get_settings
 from app.db import create_database_engine, create_session_factory, database_is_ready, run_migrations
 from app.services.companies import CompanyService
+from app.services.scans import ApplicationScanPipeline, ScanController
+from app.tasks.scheduler import ScanScheduler
 from app.web.companies import router as companies_router
 from app.web.jobs import router as jobs_router
 from app.web.profiles import router as profiles_router
@@ -27,11 +29,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise RuntimeError("Database readiness check failed")
         application.state.engine = engine
         application.state.session_factory = create_session_factory(engine)
+        scan_controller = ScanController(
+            ApplicationScanPipeline(
+                application.state.session_factory,
+                resolved_settings,
+            )
+        )
+        scan_scheduler = ScanScheduler(
+            scan_controller,
+            interval_hours=resolved_settings.scan_interval_hours,
+        )
+        application.state.scan_controller = scan_controller
+        application.state.scan_scheduler = scan_scheduler
         try:
             with application.state.session_factory() as session:
                 CompanyService(session).import_seed_file(resolved_settings.company_seed_path)
+            scan_scheduler.start()
             yield
         finally:
+            scan_scheduler.shutdown()
+            await scan_controller.shutdown()
             engine.dispose()
 
     application = FastAPI(

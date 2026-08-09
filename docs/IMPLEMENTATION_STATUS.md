@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M18 Job Detail + State are complete. M19 has not started.
+M01 Project Foundation through M19 Scheduler + Search Now are complete. M20 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -114,6 +114,8 @@ M17 added no dependency; the queue uses the existing typed settings, SQLAlchemy 
 
 M18 added no dependency and no migration; job details and state mutations use the existing FastAPI/Jinja2/SQLAlchemy stack and the frozen `job_user_state` schema introduced for M16 filtering.
 
+M19 added the architecture-approved `apscheduler` 3.x runtime dependency for one in-process asyncio scheduler. The installed direct version is `3.11.3`; its only newly installed transitive dependency is `tzlocal==5.4.4`.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -170,7 +172,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M16 Dashboard + Filters | Paginated job views, required metrics, filters, score labels | Open 85+ jobs are quickly findable; applied/ignored and location filters work | Complete |
 | M17 Daily Action Queue | Ranked configurable queue, default 10 | Only strongest open, relevant, unhandled jobs appear | Complete |
 | M18 Job Detail + State | Reading-oriented detail, original URL, Save/Applied/Ignore, resume/note | State persists across rediscovery and applied metadata is retained | Complete |
-| M19 Scheduler + Search Now | Configurable four-hour default, common pipeline, run visibility, overlap protection | Manual/scheduled paths match and concurrent scans are prevented | Pending |
+| M19 Scheduler + Search Now | Configurable four-hour default, common pipeline, run visibility, overlap protection | Manual/scheduled paths match and concurrent scans are prevented | Complete |
 | M20 Telegram | Three destination types and notification idempotency | Recommendation, application, and summary events route correctly without duplicates | Pending |
 | M21 Logs / Scan Health | Run/source results, counts, failures, recent health | Successful, partial, and failed scans remain inspectable with bounded error details | Pending |
 | M22 Backup / Restore | Portable archive for DB-backed state, settings, and resume files | Round trip restores required data while excluding secrets | Pending |
@@ -1251,6 +1253,77 @@ Issues discovered:
 - The state form is available for inactive profiles only when that profile is explicitly selected; M18 preserves existing profile-linked history rather than silently remapping it.
 - M19 remains responsible for enabling Search Now, scheduling, overlap protection, and visible scan-run state.
 
+## M19 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- One application-process `AsyncIOScheduler` using the architecture-approved APScheduler 3.x asyncio scheduler and an interval trigger.
+- A typed `scan_interval_hours` runtime setting exposed as `JOB_AGENT_SCAN_INTERVAL_HOURS`, defaulting to the frozen four hours and bounded from 0.25 hours to seven days.
+- Scheduler startup after database migration/readiness and seed import, plus scheduler/task shutdown before engine disposal. Scheduling exists only while the FastAPI process runs; no OS boot integration or persistent worker was added.
+- A single shared scan pipeline used unchanged by manual and scheduled triggers: profile-driven company discovery, ATS classification, all five supported/fallback connector passes, normalized upsert/deduplication, lifecycle reconciliation, deterministic profile qualification, and configured AI matching.
+- Continued known-source scans when web discovery is disabled or fails; discovery, source, persistence, and individual AI failures remain isolated and produce a Partial run rather than discarding completed work.
+- Sequential connector families with each connector's existing bounded concurrency, short per-source persistence/lifecycle sessions, and 100-job matching batches to remain suitable for the target Linux laptop.
+- Company `last_scanned_at`, successful-scan timestamp, and last job count updates as sources run.
+- One `ScanController` task/lock guard shared by both trigger types. A running task causes additional manual or scheduled starts to return immediately without queuing or overlapping work; APScheduler also uses `max_instances=1` and coalescing.
+- A non-blocking `POST /scans/search-now` action that starts the shared pipeline and redirects immediately with Started or Already Running feedback.
+- Live dashboard visibility for Idle, Running, Success, Partial, or Failed state; trigger type; start/completion and next-run timing; company/source/job/scoring counts; bounded current-run errors; configured interval; and current summary.
+- Only the current/last snapshot is held in process. M21 retains ownership of persistent `scan_runs`, source-result history, historical health, and durable logs.
+- No M20 Telegram destination, delivery, notification event, idempotency log, new schema, external worker, Redis, Celery, OS service, or boot integration.
+
+Files created:
+
+- `app/services/scans.py`
+- `app/tasks/__init__.py`
+- `app/tasks/scheduler.py`
+- `tests/module/test_m19_scheduler_scan.py`
+
+Files changed:
+
+- `.env.example`
+- `pyproject.toml`
+- `app/config.py`
+- `app/main.py`
+- `app/web/routes.py`
+- `app/web/templates/dashboard.html`
+- `app/web/static/styles.css`
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime direct: `apscheduler>=3.11,<4` (installed `3.11.3`)
+- Runtime transitive: `tzlocal==5.4.4`
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m19_scheduler_scan.py` -> 3 passed.
+- Shared-pipeline workflow -> the same injected runner received one Manual and one Scheduled trigger through the same controller path.
+- Overlap workflow -> while Manual was held in Running state, a second Manual start and a Scheduled trigger both returned `false`; the runner remained at exactly one call.
+- Default schedule workflow -> application startup created a future next-run time with the frozen four-hour interval.
+- Configurable schedule workflow -> a six-hour application setting rendered `Runs every 6 hours` and a future next scheduled time.
+- Search Now workflow -> POST returned HTTP 303 immediately, Running state and a disabled `Search Running` button were visible, a concurrent POST reported Already Running, and completion rendered Success with the Manual trigger and fixture counts.
+- Real zero-credential workflow -> one active profile with disabled search and AI completed the real shared pipeline without any external request; it returned a controlled Partial result for the unconfigured search while safely checking zero known sources.
+- `.venv/bin/python -m compileall -q app/config.py app/main.py app/services/scans.py app/tasks app/web/routes.py tests/module/test_m19_scheduler_scan.py` -> passed.
+- `.venv/bin/python -m pip check` -> no broken requirements.
+- `git diff --check` -> passed.
+- No migration check was needed because M19 persists no new schema and leaves M21 scan tables unimplemented.
+- The full application test suite was intentionally not run under the frozen testing policy.
+
+Acceptance result: all M19 acceptance criteria pass. The scheduler defaults to four hours and is configurable, Search Now and scheduled execution call the same pipeline, the application-wide guard prevents concurrent scans, and current/last run plus next-run state is visible in the dashboard.
+
+Issues discovered:
+
+- The first zero-credential test expected a disabled-search warning with no active profiles. The pipeline correctly generated no query and returned a successful no-op, so the focused fixture was corrected to include one active profile and now exercises the intended disabled-search path.
+- No unresolved M19 scheduler lifecycle, trigger parity, overlap, zero-credential, pipeline isolation, run-visibility, or resource-boundary failure remains.
+- The current/last run snapshot is deliberately in memory and resets on application restart. Persistent run/source history belongs to the frozen M21 tables and was not started early.
+- Source metadata update failures are non-fatal and counted in the visible current-run errors so one metadata write cannot stop later sources; M21 will make such failures durably inspectable.
+- APScheduler uses its in-memory job store because the frozen app interval is supplied by typed runtime settings and scheduler operation is process-bound. No extra scheduler database, thread pool, worker, or service was introduced.
+- The request's dependency wording referred to M18 while otherwise limiting work to M19. This was treated as a module-number typo; only the explicitly architecture-approved scheduler dependency required by M19 was added.
+- M20 remains responsible for Telegram destinations, three notification event types, delivery, and notification idempotency.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -1267,7 +1340,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M19 when explicitly requested.
+There are no genuine blockers to starting M20 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -1275,4 +1348,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M18. Do not begin M19 until explicitly requested.
+Stop after M19. Do not begin M20 until explicitly requested.

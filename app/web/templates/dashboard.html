@@ -8,11 +8,20 @@
       <p class="eyebrow">Job search / Overview</p>
       <h1 id="page-title">Job Search Dashboard</h1>
       <p class="page-intro">Your focused view of roles worth reviewing today.</p>
+      <p class="scan-timing">
+        {% if scan_run.finished_at %}Last scan {{ scan_run.finished_at.strftime("%d %b %Y, %H:%M UTC") }}{% else %}No completed scan yet{% endif %}
+        · {% if scan_schedule.next_run_at %}Next scan {{ scan_schedule.next_run_at.strftime("%d %b %Y, %H:%M UTC") }}{% else %}Schedule unavailable{% endif %}
+      </p>
     </div>
-    <button class="button" type="button" disabled title="Search Now is introduced with scan scheduling">
-      Search Now
-    </button>
+    <form method="post" action="/scans/search-now">
+      <button class="button" type="submit"{% if scan_run.is_running %} disabled{% endif %}>
+        {% if scan_run.is_running %}Search Running{% else %}Search Now{% endif %}
+      </button>
+    </form>
   </section>
+
+  {% if scan_message == "started" %}<p class="scan-notice">Search started using the shared scan pipeline.</p>{% endif %}
+  {% if scan_message == "already-running" %}<p class="scan-notice">A scan is already running; no overlapping run was started.</p>{% endif %}
 
   <dl class="status-strip" aria-label="Job search status">
     <div class="stat-cell">
@@ -33,7 +42,7 @@
     </div>
     <div class="stat-cell">
       <dt>Scan Health</dt>
-      <dd class="stat-cell__text"><span class="status-dot" aria-hidden="true"></span> Ready</dd>
+      <dd class="stat-cell__text"><span class="status-dot" aria-hidden="true"></span> {{ scan_run.status|title }}</dd>
     </div>
   </dl>
 
@@ -155,8 +164,27 @@
       <p class="section-number">Section 03</p>
       <div>
         <h2 id="scan-title">Latest Scan</h2>
-        <p>No scan history is available yet. Scan scheduling and run visibility remain disabled.</p>
+        <p>{{ scan_run.summary }}</p>
       </div>
     </header>
+    <div class="scan-summary" data-scan-status="{{ scan_run.status }}">
+      <dl class="job-facts scan-facts">
+        <div><dt>Status</dt><dd>{{ scan_run.status|title }}</dd></div>
+        <div><dt>Trigger</dt><dd>{{ scan_run.trigger_type|title if scan_run.trigger_type else "—" }}</dd></div>
+        <div><dt>Companies</dt><dd>{{ scan_run.companies_checked }}</dd></div>
+        <div><dt>Sources</dt><dd>{{ scan_run.sources_checked }}</dd></div>
+        <div><dt>Fetched</dt><dd>{{ scan_run.jobs_fetched }}</dd></div>
+        <div><dt>New / Updated</dt><dd>{{ scan_run.jobs_new }} / {{ scan_run.jobs_updated }}</dd></div>
+        <div><dt>Scored</dt><dd>{{ scan_run.jobs_scored }}</dd></div>
+        <div><dt>Errors</dt><dd>{{ scan_run.errors_count }}</dd></div>
+      </dl>
+      {% if scan_run.errors %}
+        <details class="scan-errors">
+          <summary>Recent run errors</summary>
+          <ul>{% for error in scan_run.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+        </details>
+      {% endif %}
+      <p class="muted-copy">Runs every {{ "%g"|format(scan_schedule.interval_hours) }} hours while this application process is running.</p>
+    </div>
   </section>
 {% endblock %}

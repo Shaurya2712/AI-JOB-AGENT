@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M18 Job Detail + State.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M19 Scheduler + Search Now.
 
 ## Requirements
 
@@ -36,6 +36,8 @@ The local company registry is available at <http://127.0.0.1:8000/companies>. Th
 The paginated job reference is available at <http://127.0.0.1:8000/jobs>. It supports the frozen profile, role, score, location, source, lifecycle, user-state, salary, remote, posted-date, and discovered-date filters. Open a job to review its description, complete match breakdown, linked profile and suggested resume, then Save, Mark Applied, or Ignore it. Applied jobs may record a profile-owned resume and an optional note.
 
 The dashboard's Apply Today section ranks the strongest open scored jobs for active profiles, excluding jobs already applied to or ignored. Set `JOB_AGENT_DAILY_ACTION_TARGET` to change its default target of 10 (maximum 100).
+
+The application starts one in-process scheduler with a four-hour default interval. Set `JOB_AGENT_SCAN_INTERVAL_HOURS` to a value from `0.25` to `168` to change it. Search Now and scheduled scans use the same guarded discovery, collection, persistence, lifecycle, qualification, and matching pipeline; a second scan cannot overlap a running scan. Scheduling stops when the application process stops.
 
 AI matching is disabled by default, so the application still starts without credentials. To configure M15 matching, set `JOB_AGENT_AI_PROVIDER` to `openai`, `anthropic`, or `gemini`, set `JOB_AGENT_AI_MODEL`, and provide only the corresponding API key in the local `.env`. Never commit that file. The scan pipeline and browser match views remain later modules.
 
@@ -85,4 +87,10 @@ pytest tests/module/test_m17_daily_action_queue.py
 
 ```bash
 pytest tests/module/test_m18_job_detail_state.py
+```
+
+## M19 Focused Tests
+
+```bash
+pytest tests/module/test_m19_scheduler_scan.py
 ```

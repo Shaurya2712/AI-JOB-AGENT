@@ -802,6 +802,45 @@ a:focus-visible {
   align-items: center;
 }
 
+.scan-timing {
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.scan-notice {
+  margin: calc(-1 * var(--space-6)) 0 var(--space-8);
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface);
+  font-size: 0.8125rem;
+}
+
+.scan-summary {
+  min-width: 0;
+}
+
+.scan-facts {
+  margin-top: 0;
+}
+
+.scan-errors {
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 0.8125rem;
+}
+
+.scan-errors summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.scan-errors ul {
+  margin-bottom: 0;
+}
+
 .job-detail__heading {
   justify-content: space-between;
   gap: var(--space-8);
