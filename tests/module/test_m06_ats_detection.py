@@ -34,12 +34,12 @@ from app.services.ats_detection import AtsDetectionService, AtsUrlDetector
         (
             "https://acme.wd5.myworkdayjobs.com/en-US/External_Careers/job/Pune/123",
             "workday",
-            "acme/External_Careers",
+            "acme.wd5.myworkdayjobs.com/acme/External_Careers",
         ),
         (
             "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/External/jobs",
             "workday",
-            "acme/External",
+            "acme.wd5.myworkdayjobs.com/acme/External",
         ),
     ],
 )

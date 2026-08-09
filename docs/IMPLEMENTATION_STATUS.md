@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M09 Ashby Connector are complete. M10 has not started.
+M01 Project Foundation through M10 Workday Connector are complete. M11 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -96,6 +96,8 @@ M08 added no dependency; the Lever adapter reuses the M07 connector contract, bo
 
 M09 added no dependency; the Ashby adapter reuses the same connector contract, HTTP settings, and isolated collection runner.
 
+M10 added no dependency; the Workday adapter reuses the existing `httpx`, Pydantic, connector contract, bounded HTTP settings, and collection runner.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -143,7 +145,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M07 Greenhouse Connector | Fetch and normalize open Greenhouse jobs behind the connector contract | Deterministic fixtures validate mapping, pagination/error isolation as applicable | Complete |
 | M08 Lever Connector | Fetch and normalize open Lever jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Complete |
 | M09 Ashby Connector | Fetch and normalize open Ashby jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Complete |
-| M10 Workday Connector | Pragmatic supported Workday collection behind the same contract | Deterministic fixtures validate the bounded implementation; unsupported variants fail safely | Pending |
+| M10 Workday Connector | Pragmatic supported Workday collection behind the same contract | Deterministic fixtures validate the bounded implementation; unsupported variants fail safely | Complete |
 | M11 Generic Career Page Fallback | Bounded best-effort HTML job extraction | Time, size, type, URL/domain, and link limits hold; unreliable pages become unsupported | Pending |
 | M12 Normalization + Deduplication | Canonical job schema, URL/source/fingerprint identity, upsert | Rediscovery remains one row; changes update; `last_seen_at` refreshes | Pending |
 | M13 Lifecycle | Missing counters and open/possibly-closed/closed transitions | One absence stays open; repeated confirmed absence transitions; reappearance resets; explicit closure closes | Pending |
@@ -669,6 +671,66 @@ Issues discovered:
 - Ashby documents one complete published-post response and no pagination parameters, so M09 performs one bounded request rather than inventing pagination.
 - Live Ashby boards were not called. Deterministic local transport verifies request and response behavior.
 
+## M10 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A pragmatic Workday adapter implementing the unchanged M07 `JobConnector` and `ConnectorJob` boundary.
+- A precise Workday provider identifier containing the detected `myworkdayjobs.com` shard hostname, tenant, and external career-site name; M06 detection now retains the hostname required to reach the correct public site without shard guessing.
+- Public CXS listing requests using the empty search/facet payload and fixed 20-job pagination, followed by public detail requests for each listed job so the connector returns the full job description required by the shared contract.
+- Mapping of Workday opaque posting IDs, titles, locations, HTML descriptions converted to plain text, and constructed public hosted URLs into `ConnectorJob`.
+- Filtering of detail responses that are no longer posted or cannot be applied to, covering listing/detail races without presenting them as open jobs.
+- Exact `*.wdN.myworkdayjobs.com` host validation, single-segment tenant/site validation, same-host job-detail construction, and strict `/job/` path validation; legacy hostname-free identifiers are refreshed from their stored career URL during ATS classification and fail before a request when passed directly to the connector.
+- A 5,000-job source maximum, 20-job page bound, cumulative configured response-byte budget, configured timeout, bounded shared request semaphore/connection pool with a maximum of five, disabled redirects, and one safe retry for transport/HTTP 5xx failures.
+- Structured Pydantic validation for listing and detail responses, bounded fields, controlled failures for premature pagination and unsupported response/path shapes, and standard-library HTML text extraction with no M11 generic-page crawling.
+- Per-company error isolation through the existing collection runner, selecting only active, connector-ready Workday companies and retaining successes when another Workday source fails.
+- No generic career-page parsing, discovery heuristics, shard probing, browser automation, job persistence, canonical normalization, deduplication, or lifecycle behavior; M11 was not started.
+
+Files created:
+
+- `app/providers/jobs/workday.py`
+- `tests/module/test_m10_workday.py`
+
+Files changed:
+
+- `app/providers/jobs/__init__.py`
+- `app/providers/jobs/factory.py`
+- `app/services/ats_detection.py`
+- `tests/module/test_m06_ats_detection.py` (expected Workday identifiers only, reflecting the exact-host prerequisite)
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `.venv/bin/python -m pytest tests/module/test_m10_workday.py` -> 5 passed
+- Request workflow -> deterministic transport verified the exact CXS host/tenant/site URL, empty search/facet payload, 20-item offsets, JSON headers, absence of authorization, detail requests, and one safe HTTP 5xx retry
+- Pagination/mapping workflow -> a full first page and one-item second page were collected; open details mapped opaque IDs, normalized titles/locations, plain descriptions, and hosted URLs into the unchanged connector contract
+- Open-state workflow -> a fixture posting that became non-posted/non-applicable between listing and detail was excluded
+- Validation workflow -> hostname-free and non-Workday identifiers made no request, and an absolute cross-host detail path raised a controlled unsupported-variant error
+- Detection workflow -> a hosted Workday career URL retained the exact shard hostname, tenant, and site required by the connector; a previously stored hostname-free M06 identifier was refreshed from its career URL without a migration
+- Isolation workflow -> one failed Workday source and one successful source produced independent results; unsupported Workday and Ashby companies were not collected
+- `.venv/bin/python -m compileall -q app/providers/jobs/workday.py app/providers/jobs/factory.py app/providers/jobs/__init__.py app/services/ats_detection.py tests/module/test_m10_workday.py` -> passed
+- `.venv/bin/python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M10 scope and acceptance requirements pass. Supported public Workday career sites are collected through bounded listing and detail requests, open jobs are mapped into the same connector contract as Greenhouse, Lever, and Ashby, unsupported variants fail safely, and one Workday source failure cannot prevent another source from succeeding.
+
+Issues discovered:
+
+- No M10 request, pagination, mapping, validation, open-state, or source-isolation failure remains.
+- The M06 `tenant/site` identifier omitted the Workday deployment shard and could not identify a resolvable public endpoint. M10 refined only Workday identifiers to `hostname/tenant/site`; existing hostname-free values refresh on ATS classification and no database migration is needed because the field remains within its existing 255-character schema.
+- Workday documents external career-site listing/detail behavior but does not publish the CXS transport as a stable general-purpose public API. M10 therefore supports only the observed, narrowly validated public career-site shape and does not probe shards, discover alternate transports, or reverse engineer customer-specific variants.
+- Workday allows customers to exclude career sites from third-party indexing. Access-disabled sites and HTTP errors are reported as isolated source failures; M10 does not bypass the restriction or fall back to browser automation.
+- Complete descriptions require one bounded detail request per listed job. Requests share the configured maximum-five connection limit and cumulative response budget to remain suitable for the target Linux laptop.
+- The M10 tests use deterministic local HTTP fixtures. One bounded read-only inspection of Workday's own public career site was used during implementation to confirm the current listing and detail field shapes; it was not part of the test command.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -685,7 +747,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M10 when explicitly requested.
+There are no genuine blockers to starting M11 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -693,4 +755,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M09. Do not begin M10 until explicitly requested.
+Stop after M10. Do not begin M11 until explicitly requested.

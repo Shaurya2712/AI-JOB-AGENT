@@ -31,6 +31,12 @@ _LEVER_JOB_HOSTS = frozenset({"jobs.lever.co", "jobs.eu.lever.co"})
 _LEVER_API_HOSTS = frozenset({"api.lever.co", "api.eu.lever.co"})
 _IDENTIFIER_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,254}")
 _LOCALE_PATTERN = re.compile(r"[a-z]{2}-[a-z]{2}", flags=re.IGNORECASE)
+_WORKDAY_HOST_PATTERN = re.compile(
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.wd[0-9]{1,4}\.myworkdayjobs\.com"
+)
+_WORKDAY_PATH_IDENTIFIER_PATTERN = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._~-]{0,127}"
+)
 
 
 @dataclass(frozen=True)
@@ -111,7 +117,21 @@ class AtsUrlDetector:
         identifier = AtsUrlDetector._clean_identifier(provider_identifier)
         if normalized_type not in RECOGNIZED_PROVIDER_TYPES or identifier is None:
             return AtsUrlDetector()._result("unknown", None)
+        if normalized_type == "workday" and not AtsUrlDetector._is_workday_identifier(
+            identifier
+        ):
+            return AtsUrlDetector()._result("unknown", None)
         return AtsUrlDetector()._result(normalized_type, identifier)
+
+    @staticmethod
+    def _is_workday_identifier(identifier: str) -> bool:
+        parts = identifier.split("/")
+        return (
+            len(parts) == 3
+            and _WORKDAY_HOST_PATTERN.fullmatch(parts[0]) is not None
+            and _WORKDAY_PATH_IDENTIFIER_PATTERN.fullmatch(parts[1]) is not None
+            and _WORKDAY_PATH_IDENTIFIER_PATTERN.fullmatch(parts[2]) is not None
+        )
 
     @staticmethod
     def _parse_url(
@@ -173,6 +193,8 @@ class AtsUrlDetector:
 
     @classmethod
     def _workday_identifier(cls, hostname: str, path_segments: list[str]) -> str | None:
+        if not _WORKDAY_HOST_PATTERN.fullmatch(hostname):
+            return None
         tenant = hostname.removesuffix(".myworkdayjobs.com").split(".")[0]
         tenant = cls._clean_identifier(tenant)
         if tenant is None:
@@ -183,13 +205,15 @@ class AtsUrlDetector:
                 return None
             url_tenant = cls._clean_identifier(path_segments[2])
             site = cls._clean_identifier(path_segments[3])
-            return cls._clean_identifier(f"{url_tenant}/{site}") if url_tenant and site else None
+            if url_tenant and site:
+                return cls._clean_identifier(f"{hostname}/{url_tenant}/{site}")
+            return None
 
         site_index = 1 if path_segments and _LOCALE_PATTERN.fullmatch(path_segments[0]) else 0
         if len(path_segments) <= site_index:
             return None
         site = cls._clean_identifier(path_segments[site_index])
-        return cls._clean_identifier(f"{tenant}/{site}") if site else None
+        return cls._clean_identifier(f"{hostname}/{tenant}/{site}") if site else None
 
     @classmethod
     def _subdomain_identifier(cls, hostname: str, suffix: str) -> str | None:
