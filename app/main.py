@@ -7,13 +7,16 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings, get_settings
 from app.db import create_database_engine, create_session_factory, database_is_ready, run_migrations
+from app.providers.telegram import open_telegram_client
 from app.services.companies import CompanyService
+from app.services.notifications import NotificationService
 from app.services.scans import ApplicationScanPipeline, ScanController
 from app.tasks.scheduler import ScanScheduler
 from app.web.companies import router as companies_router
 from app.web.jobs import router as jobs_router
 from app.web.profiles import router as profiles_router
 from app.web.routes import STATIC_DIR, router
+from app.web.settings import router as settings_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -29,26 +32,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise RuntimeError("Database readiness check failed")
         application.state.engine = engine
         application.state.session_factory = create_session_factory(engine)
-        scan_controller = ScanController(
-            ApplicationScanPipeline(
-                application.state.session_factory,
-                resolved_settings,
-            )
-        )
-        scan_scheduler = ScanScheduler(
-            scan_controller,
-            interval_hours=resolved_settings.scan_interval_hours,
-        )
-        application.state.scan_controller = scan_controller
-        application.state.scan_scheduler = scan_scheduler
         try:
             with application.state.session_factory() as session:
                 CompanyService(session).import_seed_file(resolved_settings.company_seed_path)
-            scan_scheduler.start()
-            yield
+            async with open_telegram_client(resolved_settings) as telegram_client:
+                notification_service = NotificationService(
+                    application.state.session_factory,
+                    telegram_client,
+                    match_threshold=resolved_settings.telegram_match_threshold,
+                )
+                scan_controller = ScanController(
+                    ApplicationScanPipeline(
+                        application.state.session_factory,
+                        resolved_settings,
+                        recommendation_notifier=notification_service,
+                    ),
+                    completion_notifier=notification_service,
+                )
+                scan_scheduler = ScanScheduler(
+                    scan_controller,
+                    interval_hours=resolved_settings.scan_interval_hours,
+                )
+                application.state.notification_service = notification_service
+                application.state.scan_controller = scan_controller
+                application.state.scan_scheduler = scan_scheduler
+                try:
+                    scan_scheduler.start()
+                    yield
+                finally:
+                    scan_scheduler.shutdown()
+                    await scan_controller.shutdown()
         finally:
-            scan_scheduler.shutdown()
-            await scan_controller.shutdown()
             engine.dispose()
 
     application = FastAPI(
@@ -61,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(profiles_router)
     application.include_router(companies_router)
     application.include_router(jobs_router)
+    application.include_router(settings_router)
     return application
 
 

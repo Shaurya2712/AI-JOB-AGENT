@@ -76,6 +76,16 @@ class ScanRunner(Protocol):
         raise NotImplementedError
 
 
+class HighMatchNotifier(Protocol):
+    async def notify_high_match(self, job_id: int, profile_id: int) -> object:
+        raise NotImplementedError
+
+
+class ScanCompletionNotifier(Protocol):
+    async def notify_scan_summary(self, scan: ScanRunSnapshot) -> object:
+        raise NotImplementedError
+
+
 @dataclass
 class _RunCounts:
     companies_checked: int = 0
@@ -87,6 +97,7 @@ class _RunCounts:
     strong_matches: int = 0
     errors_count: int = 0
     errors: list[str] = field(default_factory=list)
+    new_job_ids: set[int] = field(default_factory=set)
 
     def add_error(self, message: str) -> None:
         self.errors_count += 1
@@ -99,9 +110,11 @@ class ApplicationScanPipeline:
         self,
         session_factory: sessionmaker[Session],
         settings: Settings,
+        recommendation_notifier: HighMatchNotifier | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
+        self.recommendation_notifier = recommendation_notifier
 
     async def run(self, trigger_type: ScanTrigger) -> ScanPipelineResult:
         del trigger_type
@@ -206,6 +219,9 @@ class ApplicationScanPipeline:
                 seen_job_ids = [result.job.id for result in upserts]
                 counts.jobs_new += sum(result.created for result in upserts)
                 counts.jobs_updated += sum(result.updated for result in upserts)
+                counts.new_job_ids.update(
+                    result.job.id for result in upserts if result.created
+                )
                 JobLifecycleService(
                     session,
                     close_after_missing_scans=(
@@ -293,12 +309,33 @@ class ApplicationScanPipeline:
                                     and result.match.overall_score >= 85
                                 ):
                                     counts.strong_matches += 1
+                                if (
+                                    self.recommendation_notifier is not None
+                                    and result.match is not None
+                                    and job.id in counts.new_job_ids
+                                    and result.match.overall_score
+                                    >= self.settings.telegram_match_threshold
+                                ):
+                                    try:
+                                        await self.recommendation_notifier.notify_high_match(
+                                            job.id,
+                                            profile.id,
+                                        )
+                                    except Exception:
+                                        counts.add_error(
+                                            "High-match notification failed unexpectedly"
+                                        )
                     last_job_id = jobs[-1].id
 
 
 class ScanController:
-    def __init__(self, runner: ScanRunner) -> None:
+    def __init__(
+        self,
+        runner: ScanRunner,
+        completion_notifier: ScanCompletionNotifier | None = None,
+    ) -> None:
         self.runner = runner
+        self.completion_notifier = completion_notifier
         self._guard = asyncio.Lock()
         self._task: asyncio.Task[ScanRunSnapshot] | None = None
         self._snapshot = ScanRunSnapshot()
@@ -397,4 +434,9 @@ class ScanController:
                 summary="Scan failed unexpectedly.",
             )
         self._snapshot = snapshot
+        if self.completion_notifier is not None:
+            try:
+                await self.completion_notifier.notify_scan_summary(snapshot)
+            except Exception:
+                pass
         return snapshot

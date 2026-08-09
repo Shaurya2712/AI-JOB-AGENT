@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M19 Scheduler + Search Now.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M20 Telegram.
 
 ## Requirements
 
@@ -39,7 +39,9 @@ The dashboard's Apply Today section ranks the strongest open scored jobs for act
 
 The application starts one in-process scheduler with a four-hour default interval. Set `JOB_AGENT_SCAN_INTERVAL_HOURS` to a value from `0.25` to `168` to change it. Search Now and scheduled scans use the same guarded discovery, collection, persistence, lifecycle, qualification, and matching pipeline; a second scan cannot overlap a running scan. Scheduling stops when the application process stops.
 
-AI matching is disabled by default, so the application still starts without credentials. To configure M15 matching, set `JOB_AGENT_AI_PROVIDER` to `openai`, `anthropic`, or `gemini`, set `JOB_AGENT_AI_MODEL`, and provide only the corresponding API key in the local `.env`. Never commit that file. The scan pipeline and browser match views remain later modules.
+Telegram notifications are configured at <http://127.0.0.1:8000/settings/notifications>. Put `JOB_AGENT_TELEGRAM_BOT_TOKEN` only in the local `.env`, then configure and enable the separate chats for high-match recommendations, application activity, and search/run summaries. `JOB_AGENT_TELEGRAM_MATCH_THRESHOLD` defaults to 85 and accepts 0–100. The application starts normally without a token, never renders the token, and records delivery status for duplicate suppression and debugging.
+
+AI matching is disabled by default, so the application still starts without credentials. To configure M15 matching, set `JOB_AGENT_AI_PROVIDER` to `openai`, `anthropic`, or `gemini`, set `JOB_AGENT_AI_MODEL`, and provide only the corresponding API key in the local `.env`. Never commit that file.
 
 To apply migrations without starting the web application:
 
@@ -93,4 +95,10 @@ pytest tests/module/test_m18_job_detail_state.py
 
 ```bash
 pytest tests/module/test_m19_scheduler_scan.py
+```
+
+## M20 Focused Tests
+
+```bash
+pytest tests/module/test_m20_telegram.py
 ```

@@ -121,7 +121,7 @@ async def set_job_state(
     if profile_id <= 0 or (resume_id is not None and resume_id <= 0):
         return HTMLResponse("Invalid profile or resume", status_code=422)
     try:
-        JobDetailService(session).set_state(
+        state = JobDetailService(session).set_state(
             job_id,
             profile_id,
             action,
@@ -132,6 +132,14 @@ async def set_job_state(
         return HTMLResponse("Job or profile not found", status_code=404)
     except JobStateInputError as error:
         return HTMLResponse(str(error), status_code=422)
+    if state.state == "applied":
+        try:
+            await request.app.state.notification_service.notify_application(
+                job_id,
+                profile_id,
+            )
+        except Exception:
+            pass
     return RedirectResponse(
         url=f"/jobs/{job_id}?profile_id={profile_id}",
         status_code=303,

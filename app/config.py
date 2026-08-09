@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     job_lifecycle_close_after_missing_scans: int = Field(default=3, ge=3, le=20)
     daily_action_target: int = Field(default=10, ge=1, le=100)
     scan_interval_hours: float = Field(default=4.0, ge=0.25, le=168.0)
+    telegram_bot_token: SecretStr | None = None
+    telegram_match_threshold: int = Field(default=85, ge=0, le=100)
+    telegram_timeout_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
     ai_provider: Literal["disabled", "openai", "anthropic", "gemini"] = "disabled"
     ai_model: str = Field(default="", max_length=120)
     openai_api_key: SecretStr | None = None

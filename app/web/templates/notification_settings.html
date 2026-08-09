@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Telegram settings · {{ app_name }}{% endblock %}
+
+{% block content %}
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Settings · Telegram</p>
+      <h1>Route the moments that matter.</h1>
+      <p class="page-intro">Configure one chat for each frozen notification type. The bot token stays in the local environment and is never shown here.</p>
+    </div>
+  </header>
+
+  {% if saved %}
+    <p class="notice notice--success" role="status">Telegram destination saved.</p>
+  {% endif %}
+
+  <dl class="status-strip status-strip--compact">
+    <div class="stat-cell">
+      <dt>Bot token</dt>
+      <dd class="stat-cell__text"><span class="status-dot"></span>{{ "Configured" if telegram_configured else "Not configured" }}</dd>
+    </div>
+    <div class="stat-cell">
+      <dt>High-match threshold</dt>
+      <dd>{{ match_threshold }}+</dd>
+    </div>
+  </dl>
+
+  <section class="settings-list" aria-label="Telegram destinations">
+    {% for destination in destinations %}
+      <form class="settings-record" method="post" action="/settings/notifications">
+        <div class="settings-record__heading">
+          <div>
+            <p class="section-number">0{{ loop.index }}</p>
+            <h2>{{ destination.label }}</h2>
+          </div>
+          <label class="checkbox-field">
+            <input type="checkbox" name="is_enabled"{% if destination.is_enabled %} checked{% endif %}>
+            Enabled
+          </label>
+        </div>
+        <input type="hidden" name="destination_type" value="{{ destination.type }}">
+        <div class="field-grid field-grid--two">
+          <label class="field">
+            <span>Destination name</span>
+            <input name="name" value="{{ destination.name }}" maxlength="120" required>
+          </label>
+          <label class="field">
+            <span>Telegram chat ID</span>
+            <input name="telegram_chat_id" value="{{ destination.telegram_chat_id }}" maxlength="32" inputmode="numeric" placeholder="-1001234567890">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="button button--small" type="submit">Save destination</button>
+        </div>
+      </form>
+    {% endfor %}
+  </section>
+{% endblock %}

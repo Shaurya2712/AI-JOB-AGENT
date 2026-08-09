@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M19 Scheduler + Search Now are complete. M20 has not started.
+M01 Project Foundation through M20 Telegram are complete. M21 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -116,6 +116,8 @@ M18 added no dependency and no migration; job details and state mutations use th
 
 M19 added the architecture-approved `apscheduler` 3.x runtime dependency for one in-process asyncio scheduler. The installed direct version is `3.11.3`; its only newly installed transitive dependency is `tzlocal==5.4.4`.
 
+M20 added no dependency; Telegram delivery reuses the architecture-approved `httpx` runtime client, while destination and idempotency persistence reuse SQLAlchemy/Alembic.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -173,7 +175,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M17 Daily Action Queue | Ranked configurable queue, default 10 | Only strongest open, relevant, unhandled jobs appear | Complete |
 | M18 Job Detail + State | Reading-oriented detail, original URL, Save/Applied/Ignore, resume/note | State persists across rediscovery and applied metadata is retained | Complete |
 | M19 Scheduler + Search Now | Configurable four-hour default, common pipeline, run visibility, overlap protection | Manual/scheduled paths match and concurrent scans are prevented | Complete |
-| M20 Telegram | Three destination types and notification idempotency | Recommendation, application, and summary events route correctly without duplicates | Pending |
+| M20 Telegram | Three destination types and notification idempotency | Recommendation, application, and summary events route correctly without duplicates | Complete |
 | M21 Logs / Scan Health | Run/source results, counts, failures, recent health | Successful, partial, and failed scans remain inspectable with bounded error details | Pending |
 | M22 Backup / Restore | Portable archive for DB-backed state, settings, and resume files | Round trip restores required data while excluding secrets | Pending |
 | M23 Final System Verification | Frozen 21-step end-to-end workflow after M01–M22 pass | Run full workflow, macOS/Linux setup verification, restart/persistence check, and defect-only fixes | Final Verification |
@@ -1324,6 +1326,77 @@ Issues discovered:
 - The request's dependency wording referred to M18 while otherwise limiting work to M19. This was treated as a module-number typo; only the explicitly architecture-approved scheduler dependency required by M19 was added.
 - M20 remains responsible for Telegram destinations, three notification event types, delivery, and notification idempotency.
 
+## M20 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A Telegram Bot API adapter over the existing bounded `httpx` client with a ten-second configurable timeout, two-connection limit, redirects disabled, plain-text messages, and sanitized delivery failures. The environment-only bot token is never stored in application tables or rendered in the browser.
+- Typed `telegram_bot_token`, `telegram_match_threshold` (default 85), and `telegram_timeout_seconds` runtime settings plus safe empty/default entries in `.env.example`.
+- Frozen `notification_destinations` and `notification_log` models/migration. The three destination types and delivery states are constrained; each type has one single-user V1 configuration; destination/event uniqueness supplies durable idempotency.
+- A server-rendered Telegram settings page exposing exactly High-match recommendations, Application activity, and Search/run summaries. Each destination has a validated name, signed numeric chat ID, and enable switch; enabling without a valid chat ID is rejected.
+- Recommendation notifications after a newly persisted job is successfully scored at or above the configured Telegram threshold. Rediscovered/previously known jobs do not enter this event hook, and a stable job/profile event key prevents duplicates.
+- Application activity notifications after a successful Mark Applied mutation. Repeated Applied submissions retain the M18 `applied_at` timestamp and therefore resolve to the same idempotency event.
+- Scan summary notifications after successful, partial, or failed manual/scheduled completion through the shared M19 controller. Messages contain company/source counts, fetched/new/updated/scored/strong-match counts, and error count.
+- Delivery reservation before outbound HTTP, followed by Sent or Failed persistence. Pending and Sent events are suppressed; Failed events may retry and reuse the same row. Provider failures cannot undo a completed application mutation or crash the scan controller.
+- The nullable `scan_run_id` column required by the frozen data model is present without a premature foreign key because M21 owns and has not yet introduced persistent `scan_runs`.
+- No M21 persistent scan-run/source history or health UI, no bot commands or inbound Telegram behavior, no polling/webhook server, no worker/queue, and no additional feature or dependency.
+
+Files created:
+
+- `app/models/notifications.py`
+- `app/providers/telegram.py`
+- `app/services/notifications.py`
+- `app/web/settings.py`
+- `app/web/templates/notification_settings.html`
+- `migrations/versions/20260809_0008_notifications.py`
+- `tests/module/test_m20_telegram.py`
+
+Files changed:
+
+- `.env.example`
+- `app/config.py`
+- `app/main.py`
+- `app/models/__init__.py`
+- `app/services/scans.py`
+- `app/web/jobs.py`
+- `app/web/static/styles.css`
+- `app/web/templates/base.html`
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m20_telegram.py` -> 5 passed.
+- Destination workflow -> the settings page rendered exactly three categories and only a Configured status, never the fixture token; all three chat IDs persisted enabled; an invalid ID returned HTTP 422.
+- Zero-credential workflow -> application startup and the settings page completed with no bot token, reported Not configured, and created no external request.
+- Event-routing workflow -> one high-match, one Applied, and one completed-scan event reached their independently configured chats; repeats produced exactly three total HTTP requests and three Sent idempotency rows.
+- Recommendation-boundary workflow -> a 91-point newly discovered job notified once, while scoring the same known job outside the new-job set did not notify again.
+- Scan-summary workflow -> the shared completion hook sent source/job/error counts and a direct repeat of the same completed snapshot was suppressed.
+- Failure/retry workflow -> an HTTP 500 stored the sanitized `Telegram rejected the message` failure, the same event retried successfully into the existing row, and the subsequent repeat skipped; the bot token was absent from the stored failure.
+- Fresh SQLite migration round trip `upgrade head -> downgrade 20260809_0007 -> upgrade head` -> passed; Alembic reported `20260809_0008 (head)`.
+- `.venv/bin/python -m compileall -q app/config.py app/main.py app/models/notifications.py app/providers/telegram.py app/services/notifications.py app/services/scans.py app/web/jobs.py app/web/settings.py tests/module/test_m20_telegram.py` -> passed.
+- `.venv/bin/python -m pip check` -> no broken requirements.
+- `git diff --check` -> passed.
+- The full application test suite was intentionally not run under the frozen testing policy.
+
+Acceptance result: all M20 acceptance criteria pass. The three independent destination types are configurable; recommendation, application, and scan-summary events route to the correct chats; repeated events are durably suppressed; and failures are isolated and inspectable without exposing secrets.
+
+Issues discovered:
+
+- No unresolved M20 destination configuration, token handling, threshold, event routing, duplicate suppression, failure isolation, retry, schema, migration, or rendering issue remains.
+- Telegram does not offer a client-supplied idempotency key. The application reserves its local event row before sending so concurrent/repeated local triggers cannot duplicate a confirmed delivery; a transport failure remains Failed and may be retried because Telegram cannot confirm whether an ambiguous network interruption delivered remotely.
+- Only new jobs from the current scan trigger recommendation delivery, matching the frozen product wording. Changed or unchanged rediscoveries remain scoreable under M15 rules but do not create another recommendation event.
+- M20 summary idempotency uses the M19 trigger/start timestamp because persistent scan IDs do not exist yet. M21 can populate `scan_run_id` when it introduces the frozen scan tables without changing notification behavior.
+- Live delivery still requires a user-owned bot token and chat IDs. Missing credentials are an expected Not configured state, not an application-start blocker.
+- M21 remains responsible for durable scan/source logs, run history, counts, and recent health presentation.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -1340,7 +1413,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M20 when explicitly requested.
+There are no genuine blockers to starting M21 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -1348,4 +1421,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M19. Do not begin M20 until explicitly requested.
+Stop after M20. Do not begin M21 until explicitly requested.
