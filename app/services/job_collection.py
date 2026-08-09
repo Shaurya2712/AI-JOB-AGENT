@@ -39,13 +39,23 @@ class JobCollectionService:
         self.concurrency = concurrency
 
     async def collect(self, connector: JobConnector) -> ConnectorCollectionResult:
-        companies = self.repository.list_connector_ready_companies(connector.source_type)
+        is_generic_fallback = connector.source_type == "custom"
+        companies = (
+            self.repository.list_generic_fallback_companies()
+            if is_generic_fallback
+            else self.repository.list_connector_ready_companies(connector.source_type)
+        )
         semaphore = asyncio.Semaphore(self.concurrency)
 
         async def fetch(company: Company) -> ConnectorSourceResult:
             async with semaphore:
                 try:
-                    jobs = await connector.fetch_open_jobs(company.provider_identifier or "")
+                    source_identifier = (
+                        company.careers_url
+                        if is_generic_fallback
+                        else company.provider_identifier
+                    )
+                    jobs = await connector.fetch_open_jobs(source_identifier or "")
                     return ConnectorSourceResult(
                         company_id=company.id,
                         company_name=company.name,

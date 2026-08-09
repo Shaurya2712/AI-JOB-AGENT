@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M10 Workday Connector are complete. M11 has not started.
+M01 Project Foundation through M11 Generic Career Page Fallback are complete. M12 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -98,6 +98,8 @@ M09 added no dependency; the Ashby adapter reuses the same connector contract, H
 
 M10 added no dependency; the Workday adapter reuses the existing `httpx`, Pydantic, connector contract, bounded HTTP settings, and collection runner.
 
+M11 added `beautifulsoup4` as the architecture-approved direct runtime HTML parser. It uses the standard-library `html.parser` backend and adds no compiled parser, browser, or JavaScript runtime.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -146,7 +148,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M08 Lever Connector | Fetch and normalize open Lever jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Complete |
 | M09 Ashby Connector | Fetch and normalize open Ashby jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Complete |
 | M10 Workday Connector | Pragmatic supported Workday collection behind the same contract | Deterministic fixtures validate the bounded implementation; unsupported variants fail safely | Complete |
-| M11 Generic Career Page Fallback | Bounded best-effort HTML job extraction | Time, size, type, URL/domain, and link limits hold; unreliable pages become unsupported | Pending |
+| M11 Generic Career Page Fallback | Bounded best-effort HTML job extraction | Time, size, type, URL/domain, and link limits hold; unreliable pages become unsupported | Complete |
 | M12 Normalization + Deduplication | Canonical job schema, URL/source/fingerprint identity, upsert | Rediscovery remains one row; changes update; `last_seen_at` refreshes | Pending |
 | M13 Lifecycle | Missing counters and open/possibly-closed/closed transitions | One absence stays open; repeated confirmed absence transitions; reappearance resets; explicit closure closes | Pending |
 | M14 Deterministic Qualification | Cheap exclusions and flexible experience/seniority/skill handling | Targeted cases reject only specified obvious mismatches and retain valid partial/senior matches | Pending |
@@ -731,6 +733,72 @@ Issues discovered:
 - Complete descriptions require one bounded detail request per listed job. Requests share the configured maximum-five connection limit and cumulative response budget to remain suitable for the target Linux laptop.
 - The M10 tests use deterministic local HTTP fixtures. One bounded read-only inspection of Workday's own public career site was used during implementation to confirm the current listing and detail field shapes; it was not part of the test command.
 
+## M11 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A `GenericCareerPageConnector` implementing the existing `JobConnector` and `ConnectorJob` boundary with source type `custom`.
+- One public career-index request followed by detail requests for at most 50 high-confidence job links; detail pages are never recrawled for more links.
+- Conservative link recognition using explicit job/position/opening/vacancy path shapes or known job-ID query keys, meaningful anchor text, fragment removal, and stable first-seen URL deduplication.
+- Same-host job links plus a narrow allowlist for the already-supported public Greenhouse, Lever, Ashby, and Workday career hosts; arbitrary cross-domain and non-public literal links are skipped.
+- Public HTTP(S) URL validation covering credentials, ports, hostname shape, local/internal names, private/reserved literal IP addresses, fragments, and a 4,000-character URL maximum.
+- Structured detail extraction from explicit description elements or bounded `main`/`article` fallbacks, with script/style/template/SVG removal, a reliable title requirement, optional bounded location text, and a minimum useful description length.
+- Stable generic source IDs derived from the fragment-free public detail URL without introducing M12 canonical normalization or persistence.
+- Strict HTML/XHTML content-type checks, per-response and cumulative response-byte limits, a 50-link cap, configured timeout, disabled redirects, a shared maximum-five request semaphore/connection pool, and one retry only for transport/HTTP 5xx failures.
+- Early cumulative-budget exhaustion so queued details do not continue requesting after the source byte allowance is spent.
+- An explicit `UnsupportedCareerPageError` for invalid URLs, pages without reliable job links, and sources where every candidate detail is unreliable; individual unusable details are skipped when other reliable jobs remain.
+- Collection of active M06 `custom` companies by their full careers URL while leaving structured connector selection unchanged; generic source failures remain isolated per company.
+- No recursive crawler, headless browser, JavaScript execution, redirect following, authentication, CAPTCHA/access-control bypass, job persistence, canonical normalization, deduplication, or lifecycle functionality; M12 was not started.
+
+Files created:
+
+- `app/providers/jobs/generic.py`
+- `tests/module/test_m11_generic_career_page.py`
+
+Files changed:
+
+- `app/providers/jobs/__init__.py`
+- `app/providers/jobs/factory.py`
+- `app/repositories/companies.py`
+- `app/services/job_collection.py`
+- `pyproject.toml`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: `beautifulsoup4>=4.15,<5` (installed version `4.15.0`; pure-Python `html.parser` backend)
+- Transitive: `soupsieve==2.9.2`
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `.venv/bin/python -m pytest tests/module/test_m11_generic_career_page.py` -> 4 passed
+- Mapping workflow -> a reliable same-host detail mapped a URL-derived source ID, normalized title/location, plain description, and public URL into the unchanged connector contract while an unreliable sibling detail was skipped
+- Request workflow -> fixture requests used only bounded GETs with HTML accept headers, no authorization, one safe HTTP 5xx retry, and no redirect or browser behavior
+- URL/domain workflow -> a private literal URL made no request; arbitrary external and private links were ignored; duplicate fragments collapsed to one detail URL
+- Type/size workflow -> non-HTML content, oversized single responses, and cumulative source-budget exhaustion raised controlled errors; queued requests stopped after cumulative exhaustion
+- Link/crawl workflow -> only the first 50 high-confidence index links were fetched, and job links found inside details were never crawled
+- Reliability workflow -> an index without reliable detail links became explicitly unsupported; partial detail failures retained reliable jobs
+- Isolation workflow -> active custom companies were selected by full careers URL despite being structured-connector unsupported, one custom source failure did not discard another source's result, and inactive/non-custom companies were not selected
+- `.venv/bin/python -m compileall -q app/providers/jobs/generic.py app/providers/jobs/factory.py app/providers/jobs/__init__.py app/repositories/companies.py app/services/job_collection.py tests/module/test_m11_generic_career_page.py` -> passed
+- `.venv/bin/python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M11 acceptance criteria pass. Public generic career pages are handled through a non-recursive, time/size/type/URL/domain/link-bounded HTML fallback; reliable job details map into the existing connector contract, unreliable sources become explicit unsupported errors, source failures are isolated, and no access-control bypass is attempted.
+
+Issues discovered:
+
+- No M11 request-boundary, link-cap, no-recursion, mapping, reliability, or source-isolation failure remains.
+- Generic pages are intentionally heuristic. JavaScript-only listings, generic CTA-only links, pages without useful server-rendered detail text, unrecognized URL shapes, and arbitrary cross-domain job hosts are reported as unsupported rather than guessed or crawled broadly.
+- M06 marks custom pages unsupported for structured connectors. M11 deliberately selects only active `custom` companies with a stored careers URL and passes that full URL to the fallback, without changing their structured-provider classification.
+- Individual detail failures are skipped when at least one reliable job remains. If no reliable detail succeeds, the whole custom source is unsupported so an empty result cannot be mistaken for a confirmed zero-job scan.
+- Generic source IDs are SHA-256 hashes of the bounded fragment-free detail URL. M12 remains responsible for canonical URL normalization, persistence, and cross-scan deduplication.
+- DNS hostnames are syntactically validated and local/private literal addresses are rejected, but M11 does not add a DNS resolver or network service. Requests remain bounded to the configured client with redirects disabled.
+- Live career pages were not called. All M11 request, parsing, failure, and security-boundary behavior is verified with deterministic local HTTP fixtures.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -747,7 +815,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M11 when explicitly requested.
+There are no genuine blockers to starting M12 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -755,4 +823,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M10. Do not begin M11 until explicitly requested.
+Stop after M11. Do not begin M12 until explicitly requested.
