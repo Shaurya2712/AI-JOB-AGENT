@@ -37,9 +37,68 @@
     </div>
   </dl>
 
-  <section class="editorial-section" aria-labelledby="strong-matches-title">
+  <section class="editorial-section" aria-labelledby="apply-today-title" data-queue-target="{{ daily_queue.target }}">
     <header class="section-header">
       <p class="section-number">Section 01</p>
+      <div>
+        <h2 id="apply-today-title">Apply Today</h2>
+        <p>Your top {{ daily_queue.target }} open, relevant jobs that have not been applied to or ignored.</p>
+      </div>
+    </header>
+    <div>
+      {% if daily_queue.items %}
+        <div class="table-scroll">
+          <table class="data-table data-table--compact">
+            <thead>
+              <tr>
+                <th scope="col">Rank</th>
+                <th scope="col">Match</th>
+                <th scope="col">Role</th>
+                <th scope="col">Company</th>
+                <th scope="col">Location</th>
+                <th scope="col">Salary</th>
+                <th scope="col">Source</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in daily_queue.items %}
+                <tr data-job-id="{{ item.id }}" data-queue-rank="{{ loop.index }}">
+                  <td><span class="queue-rank">{{ loop.index }}</span></td>
+                  <td>
+                    <span class="score-value">{{ item.overall_score }}%</span>
+                    <span class="score-label">{{ item.recommendation_label }}</span>
+                  </td>
+                  <td>
+                    <a class="job-title-link" href="{{ item.canonical_url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+                    {% if item.profile_name %}<span class="table-subtext">{{ item.profile_name }}</span>{% endif %}
+                  </td>
+                  <td>{{ item.company_name }}</td>
+                  <td>
+                    {{ item.location_text }}
+                    {% if item.remote_type %}<span class="table-subtext">{{ item.remote_type }}</span>{% endif %}
+                  </td>
+                  <td>{{ item.salary_text }}</td>
+                  <td><span class="badge badge--muted">{{ item.source_type }}</span></td>
+                  <td><span class="badge">{{ item.user_state }}</span></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p class="empty-state__label">Queue clear</p>
+          <h3>No open scored jobs need action.</h3>
+          <p>Applied and ignored jobs stay out of this daily queue.</p>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="editorial-section" aria-labelledby="strong-matches-title">
+    <header class="section-header">
+      <p class="section-number">Section 02</p>
       <div>
         <h2 id="strong-matches-title">Strong Matches</h2>
         <p>Highest-scoring open roles across your candidate profiles.</p>
@@ -93,7 +152,7 @@
 
   <section class="editorial-section editorial-section--compact" aria-labelledby="scan-title">
     <header class="section-header">
-      <p class="section-number">Section 02</p>
+      <p class="section-number">Section 03</p>
       <div>
         <h2 id="scan-title">Latest Scan</h2>
         <p>No scan history is available yet. Scan scheduling and run visibility remain disabled.</p>

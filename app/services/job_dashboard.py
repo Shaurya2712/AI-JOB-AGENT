@@ -92,6 +92,16 @@ class DashboardMetrics:
 
 
 @dataclass(frozen=True)
+class DailyActionQueue:
+    target: int
+    items: tuple[JobListItem, ...]
+
+    @property
+    def count(self) -> int:
+        return len(self.items)
+
+
+@dataclass(frozen=True)
 class _QueryParts:
     statement: Select[tuple[Job, Company, JobMatch | None, JobUserState | None, str | None]]
     match: type[JobMatch]
@@ -152,14 +162,39 @@ class JobDashboardService:
             cities=self._distinct_strings(Job.city),
         )
 
-    def metrics(self) -> DashboardMetrics:
-        open_job = Job.lifecycle_status == "open"
-        applied_or_ignored = exists(
-            select(JobUserState.id).where(
-                JobUserState.job_id == Job.id,
-                JobUserState.state.in_(("applied", "ignored")),
+    def daily_action_queue(self, *, target: int) -> DailyActionQueue:
+        queue_target = min(max(1, target), 100)
+        parts = self._query(
+            JobFilters(lifecycle="open"),
+            active_profiles_only=True,
+        )
+        statement = (
+            parts.statement.where(
+                parts.match.id.is_not(None),
+                ~exists(
+                    select(JobUserState.id).where(
+                        JobUserState.job_id == Job.id,
+                        JobUserState.state.in_(("applied", "ignored")),
+                    )
+                ),
+            )
+            .order_by(
+                parts.match.overall_score.desc(),
+                Job.discovered_at.desc(),
+                Job.id.desc(),
+            )
+            .limit(queue_target)
+        )
+        items = tuple(
+            self._item(job, company, match, user_state, profile_name)
+            for job, company, match, user_state, profile_name in self.session.execute(
+                statement
             )
         )
+        return DailyActionQueue(target=queue_target, items=items)
+
+    def metrics(self, *, apply_today: int) -> DashboardMetrics:
+        open_job = Job.lifecycle_status == "open"
         decisioned = exists(
             select(JobUserState.id).where(
                 JobUserState.job_id == Job.id,
@@ -171,16 +206,6 @@ class JobDashboardService:
             .select_from(Job)
             .join(JobMatch, JobMatch.job_id == Job.id)
             .where(open_job, JobMatch.overall_score >= STRONG_MATCH_MINIMUM)
-        ) or 0
-        apply_today = self.session.scalar(
-            select(func.count(func.distinct(Job.id)))
-            .select_from(Job)
-            .join(JobMatch, JobMatch.job_id == Job.id)
-            .where(
-                open_job,
-                JobMatch.overall_score >= STRONG_MATCH_MINIMUM,
-                ~applied_or_ignored,
-            )
         ) or 0
         new_jobs = self.session.scalar(
             select(func.count(Job.id)).where(open_job, ~decisioned)
@@ -197,10 +222,20 @@ class JobDashboardService:
             applied=applied,
         )
 
-    def _query(self, filters: JobFilters) -> _QueryParts:
+    def _query(
+        self,
+        filters: JobFilters,
+        *,
+        active_profiles_only: bool = False,
+    ) -> _QueryParts:
         match = aliased(JobMatch)
         user_state = aliased(JobUserState)
         match_id = select(JobMatch.id).where(JobMatch.job_id == Job.id)
+        if active_profiles_only:
+            match_id = match_id.join(
+                CandidateProfile,
+                CandidateProfile.id == JobMatch.profile_id,
+            ).where(CandidateProfile.is_active.is_(True))
         if filters.profile_id is not None:
             match_id = match_id.where(JobMatch.profile_id == filters.profile_id)
         best_match_id = (

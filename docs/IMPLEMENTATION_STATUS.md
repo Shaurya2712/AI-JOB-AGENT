@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M16 Dashboard + Filters are complete. M17 has not started.
+M01 Project Foundation through M17 Daily Action Queue are complete. M18 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -110,6 +110,8 @@ M15 added no dependency; the three AI adapters reuse the architecture-approved `
 
 M16 added no dependency; dashboard queries, pagination, filtering, and the frozen user-state table use the existing FastAPI, Jinja2, SQLAlchemy, and Alembic stack.
 
+M17 added no dependency; the queue uses the existing typed settings, SQLAlchemy dashboard query, and server-rendered Jinja2 UI.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -164,7 +166,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M14 Deterministic Qualification | Cheap exclusions and flexible experience/seniority/skill handling | Targeted cases reject only specified obvious mismatches and retain valid partial/senior matches | Complete |
 | M15 AI Provider Layer + Matching | OpenAI/Anthropic/Gemini HTTP adapters, structured matching, suggestions, persistence | Malformed output cannot crash scans; unchanged jobs need not rescore; secrets/text boundaries are safe | Complete |
 | M16 Dashboard + Filters | Paginated job views, required metrics, filters, score labels | Open 85+ jobs are quickly findable; applied/ignored and location filters work | Complete |
-| M17 Daily Action Queue | Ranked configurable queue, default 10 | Only strongest open, relevant, unhandled jobs appear | Pending |
+| M17 Daily Action Queue | Ranked configurable queue, default 10 | Only strongest open, relevant, unhandled jobs appear | Complete |
 | M18 Job Detail + State | Reading-oriented detail, original URL, Save/Applied/Ignore, resume/note | State persists across rediscovery and applied metadata is retained | Pending |
 | M19 Scheduler + Search Now | Configurable four-hour default, common pipeline, run visibility, overlap protection | Manual/scheduled paths match and concurrent scans are prevented | Pending |
 | M20 Telegram | Three destination types and notification idempotency | Recommendation, application, and summary events route correctly without duplicates | Pending |
@@ -1124,6 +1126,66 @@ Issues discovered:
 - A first disposable-migration command was rejected before execution because its temporary-file cleanup used a prohibited `rm` command. The check was rerun successfully with an OS-managed temporary database and no manual deletion.
 - No live provider or external site was called; M16 uses only the local SQLite data already produced by earlier modules.
 
+## M17 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A typed `daily_action_target` runtime setting with the frozen default of 10, exposed as `JOB_AGENT_DAILY_ACTION_TARGET` and bounded from 1 to 100 to keep the local dashboard query and rendered table small.
+- A database-backed daily action queue that selects only `open` jobs with a persisted M15 match for an active candidate profile. A persisted match is the available V1 relevance signal because M14 qualification gates jobs before M15 scoring and the frozen model defines no separate relevance flag.
+- Strongest-active-profile selection for jobs with multiple profile matches, preventing a higher historical match for an inactive profile from hiding a valid active-profile result.
+- Global exclusion of jobs with any Applied or Ignored state, while Saved and New jobs remain eligible as required by the frozen not-applied/not-ignored rule.
+- Deterministic score-first ranking with discovery time and job ID tie-breakers, plus a single SQL limit equal to the configured target so the queue does not load the full job dataset into memory.
+- The Apply Today dashboard metric now reports the rendered queue size rather than the uncapped number of potential candidates.
+- The frozen Apply Today editorial section with rank, score/label, role, linked profile, company, location, salary, source, and current state, followed by the existing Strong Matches section.
+- An explicit empty queue state when no open scored job needs action.
+- No schema migration, new table, browser-side rendering, job detail, Save/Applied/Ignore mutation, application note/resume selection, or M18+ functionality.
+
+Files created:
+
+- `tests/module/test_m17_daily_action_queue.py`
+
+Files changed:
+
+- `.env.example`
+- `app/config.py`
+- `app/services/job_dashboard.py`
+- `app/web/routes.py`
+- `app/web/templates/dashboard.html`
+- `app/web/static/styles.css`
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m17_daily_action_queue.py` -> 2 passed.
+- Default-target workflow -> twelve otherwise eligible jobs produced exactly ten ranked Apply Today rows and a dashboard metric of 10.
+- Configured-target workflow -> `daily_action_target=2` produced exactly the same top two ranked jobs and a dashboard metric of 2.
+- Ranking workflow -> the saved 99-point match ranked ahead of the new 98-point match; lower-ranked rows were capped at the configured target.
+- Eligibility workflow -> Saved stayed eligible, while Applied, Ignored, closed, unscored, inactive-profile-only, and globally handled multi-profile jobs did not enter the queue.
+- Active-profile workflow -> a 100-point inactive historical match did not hide the same job's 98-point active match.
+- `.venv/bin/python -m compileall -q app/config.py app/services/job_dashboard.py app/web/routes.py tests/module/test_m17_daily_action_queue.py` -> passed.
+- `.venv/bin/python -m pip check` -> no broken requirements.
+- `git diff --check` -> passed.
+- No migration check was needed because M17 changes no database schema.
+- The full application test suite was intentionally not run under the frozen testing policy.
+
+Acceptance result: all M17 acceptance criteria pass. The queue defaults to 10, honors a configured target, ranks the strongest active-profile matches, and contains only open, scored/relevant jobs that have not been applied to or ignored.
+
+Issues discovered:
+
+- The first focused pass exposed a multi-profile selection edge: choosing the best match before restricting profiles could let a higher inactive-profile score suppress an active-profile match. Active-profile filtering now occurs inside the correlated best-match query, and the regression test passes.
+- No unresolved M17 configuration, ranking, eligibility, query-boundary, or rendering failure remains.
+- Applied/Ignored exclusion is intentionally job-wide so the same job is not recommended again through another profile. Saved remains queue-eligible because the frozen rule excludes only Applied and Ignored.
+- Queue relevance is represented by a persisted match for an active profile; no speculative relevance table, qualification persistence, or extra threshold was invented.
+- M18 remains responsible for job details and state mutations. M17 only reads the frozen state records introduced for M16 filters.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -1140,7 +1202,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M17 when explicitly requested.
+There are no genuine blockers to starting M18 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -1148,4 +1210,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M16. Do not begin M17 until explicitly requested.
+Stop after M17. Do not begin M18 until explicitly requested.

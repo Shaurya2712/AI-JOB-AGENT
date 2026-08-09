@@ -25,13 +25,15 @@ def dashboard(
 ) -> HTMLResponse:
     settings = request.app.state.settings
     service = JobDashboardService(session)
+    daily_queue = service.daily_action_queue(target=settings.daily_action_target)
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
             "app_name": settings.app_name,
             "active_nav": "dashboard",
-            "metrics": service.metrics(),
+            "metrics": service.metrics(apply_today=daily_queue.count),
+            "daily_queue": daily_queue,
             "strong_matches": service.list_jobs(
                 JobFilters(
                     min_score=STRONG_MATCH_MINIMUM,

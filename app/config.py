@@ -36,6 +36,7 @@ class Settings(BaseSettings):
         le=25 * 1024 * 1024,
     )
     job_lifecycle_close_after_missing_scans: int = Field(default=3, ge=3, le=20)
+    daily_action_target: int = Field(default=10, ge=1, le=100)
     ai_provider: Literal["disabled", "openai", "anthropic", "gemini"] = "disabled"
     ai_model: str = Field(default="", max_length=120)
     openai_api_key: SecretStr | None = None

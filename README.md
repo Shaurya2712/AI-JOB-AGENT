@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M16 Dashboard + Filters.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M17 Daily Action Queue.
 
 ## Requirements
 
@@ -34,6 +34,8 @@ Candidate profiles can be created and edited at <http://127.0.0.1:8000/profiles>
 The local company registry is available at <http://127.0.0.1:8000/companies>. The bundled company seed file is imported idempotently at startup. Discovery, ATS detection, supported job-source connectors, normalization/deduplication, and lifecycle handling are implemented as application services; scan orchestration remains a later module.
 
 The paginated job reference is available at <http://127.0.0.1:8000/jobs>. It supports the frozen profile, role, score, location, source, lifecycle, user-state, salary, remote, posted-date, and discovered-date filters. User-state actions and job details remain disabled until M18.
+
+The dashboard's Apply Today section ranks the strongest open scored jobs for active profiles, excluding jobs already applied to or ignored. Set `JOB_AGENT_DAILY_ACTION_TARGET` to change its default target of 10 (maximum 100).
 
 AI matching is disabled by default, so the application still starts without credentials. To configure M15 matching, set `JOB_AGENT_AI_PROVIDER` to `openai`, `anthropic`, or `gemini`, set `JOB_AGENT_AI_MODEL`, and provide only the corresponding API key in the local `.env`. Never commit that file. The scan pipeline and browser match views remain later modules.
 
@@ -71,4 +73,10 @@ pytest tests/module/test_m15_ai_matching.py
 
 ```bash
 pytest tests/module/test_m16_dashboard_filters.py
+```
+
+## M17 Focused Tests
+
+```bash
+pytest tests/module/test_m17_daily_action_queue.py
 ```

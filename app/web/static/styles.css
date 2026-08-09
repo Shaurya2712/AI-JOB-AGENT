@@ -778,6 +778,12 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
+.queue-rank {
+  color: var(--color-accent-dark);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
 .section-action {
   margin: var(--space-4) 0 0;
   text-align: right;
