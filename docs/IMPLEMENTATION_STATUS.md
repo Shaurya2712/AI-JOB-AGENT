@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M07 Greenhouse Connector are complete. M08 has not started.
+M01 Project Foundation through M08 Lever Connector are complete. M09 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -92,6 +92,8 @@ M06 added no dependency; ATS detection uses deterministic standard-library URL p
 
 M07 added no dependency; the connector reuses the architecture-approved runtime `httpx` and Pydantic packages, with standard-library HTML-to-text handling.
 
+M08 added no dependency; the Lever adapter reuses the M07 connector contract, bounded HTTP configuration, and collection runner.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -137,7 +139,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M05 Query Generation + Web Discovery | Profile-derived queries, search abstraction, initial Brave Search adapter, persistent discoveries | Duplicate companies are avoided; discovery failure does not block known ATS scans | Complete |
 | M06 ATS Detection | Detect supported ATS types and safely classify recognized/unsupported sources | Fixture URLs classify correctly; unsupported sources are recorded and skipped | Complete |
 | M07 Greenhouse Connector | Fetch and normalize open Greenhouse jobs behind the connector contract | Deterministic fixtures validate mapping, pagination/error isolation as applicable | Complete |
-| M08 Lever Connector | Fetch and normalize open Lever jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Pending |
+| M08 Lever Connector | Fetch and normalize open Lever jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Complete |
 | M09 Ashby Connector | Fetch and normalize open Ashby jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Pending |
 | M10 Workday Connector | Pragmatic supported Workday collection behind the same contract | Deterministic fixtures validate the bounded implementation; unsupported variants fail safely | Pending |
 | M11 Generic Career Page Fallback | Bounded best-effort HTML job extraction | Time, size, type, URL/domain, and link limits hold; unreliable pages become unsupported | Pending |
@@ -555,6 +557,61 @@ Issues discovered:
 - Greenhouse exposes `updated_at`, not a reliable original posting date. M07 does not mislabel it as `posted_at`; later normalization will leave posting time unknown unless a source provides it explicitly.
 - Live Greenhouse sites were not called. The public contract and response behavior are verified with deterministic local transport fixtures.
 
+## M08 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A Lever adapter implementing the existing M07 `JobConnector` boundary without changing or widening the connector result contract.
+- Public Postings API requests using JSON mode, the detected Lever site identifier, and the documented `skip`/`limit` pagination parameters.
+- Mapping of Lever posting IDs, names, primary locations, plaintext combined descriptions, and hosted job URLs into `ConnectorJob`.
+- Stable whitespace normalization while retaining description paragraph boundaries supplied by `descriptionPlain`.
+- Bounded pagination in 100-posting pages, including a terminating short/empty page, a 5,000-posting source maximum, and an eight-MiB cumulative response limit inherited from M07 configuration.
+- Global Lever API lookup first with a first-page 404 fallback to the documented EU API host, allowing the M06 site identifier to work for both regions without a schema change.
+- Identifier, job URL, JSON content type, response shape, field size, page size, and response byte validation.
+- The existing bounded connection pool, timeout, disabled redirects, and one safe retry for transport/HTTP 5xx failures.
+- Per-company error isolation through the existing collection runner, selecting only active, connector-ready Lever companies and preserving successful results when another site fails.
+- No job persistence, canonical normalization, deduplication, lifecycle handling, Ashby adapter, or M09 behavior.
+
+Files created:
+
+- `app/providers/jobs/lever.py`
+- `tests/module/test_m08_lever.py`
+
+Files changed:
+
+- `app/providers/jobs/__init__.py`
+- `app/providers/jobs/factory.py`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `python -m pytest tests/module/test_m08_lever.py` -> 4 passed
+- Mapping workflow -> fixture postings mapped IDs, titles, locations, plaintext descriptions, and hosted URLs into the unchanged connector contract
+- Request workflow -> JSON mode, 100-item limit, skip offset, JSON accept header, absence of authorization, and one safe HTTP 5xx retry were verified with deterministic mock transport
+- Pagination/region workflow -> a global first-page 404 switched to the EU host; a full first page and short second page returned 101 postings in order
+- Validation workflow -> a path-like site identifier made no request, and a non-list JSON response raised a controlled connector error
+- Isolation workflow -> one failed Lever site and one successful site produced independent results; unsupported Lever and Greenhouse companies were not collected
+- `python -m compileall -q app/providers/jobs app/services/job_collection.py tests/module/test_m08_lever.py` -> passed
+- `python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M08 scope and acceptance requirements pass. Published Lever postings are fetched across bounded pages, mapped into the same connector contract as Greenhouse, and isolated per company so one Lever source failure does not prevent other sources from succeeding.
+
+Issues discovered:
+
+- No M08 request, pagination, mapping, validation, regional fallback, or source-isolation failure remains.
+- Lever documents the public endpoint as exposing published postings only, so M08 does not invent a separate open-status filter.
+- The public Lever result does not provide a reliable original posting timestamp in its documented fields; M08 leaves that concern to later normalization rather than fabricating one.
+- Live Lever sites were not called. Deterministic local transports verified global/EU requests, pagination, and response parsing.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -571,7 +628,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M08 when explicitly requested.
+There are no genuine blockers to starting M09 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -579,4 +636,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M07. Do not begin M08 until explicitly requested.
+Stop after M08. Do not begin M09 until explicitly requested.
