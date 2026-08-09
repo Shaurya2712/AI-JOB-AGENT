@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit' if profile else 'New' }} Profile · {{ app_name }}{% endblock %}
+
+{% block content %}
+  <section class="page-header page-header--form" aria-labelledby="page-title">
+    <div>
+      <p class="eyebrow">Profiles / {{ 'Edit' if profile else 'New' }}</p>
+      <h1 id="page-title">{{ 'Edit Candidate Profile' if profile else 'New Candidate Profile' }}</h1>
+      <p class="page-intro">Use one item per line or separate items with commas.</p>
+    </div>
+    <a class="text-link" href="/profiles">Back to profiles</a>
+  </section>
+
+  {% if errors %}
+    <div class="inline-alert" role="alert">
+      <p><strong>Please correct the profile.</strong></p>
+      <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form class="editorial-form" method="post" action="{{ '/profiles/' ~ profile.id ~ '/edit' if profile else '/profiles' }}">
+    <fieldset class="form-section">
+      <legend><span>01</span> Profile Basics</legend>
+      <div class="field-grid field-grid--two">
+        <label class="field">
+          <span>Name</span>
+          <input name="name" value="{{ values.name }}" maxlength="120" required autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Years of experience</span>
+          <input type="number" name="years_experience" value="{{ values.years_experience }}" min="0" max="80" step="0.5" required>
+        </label>
+      </div>
+      <label class="checkbox-field">
+        <input type="checkbox" name="is_active"{% if values.is_active %} checked{% endif %}>
+        <span>Active profile</span>
+      </label>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend><span>02</span> Roles &amp; Skills</legend>
+      <div class="field-grid field-grid--two">
+        <label class="field">
+          <span>Target roles</span>
+          <textarea name="target_roles" rows="7" required>{{ values.target_roles }}</textarea>
+        </label>
+        <label class="field">
+          <span>Role synonyms</span>
+          <textarea name="role_synonyms" rows="7">{{ values.role_synonyms }}</textarea>
+        </label>
+      </div>
+      <label class="field">
+        <span>Skills</span>
+        <textarea name="skills" rows="5">{{ values.skills }}</textarea>
+      </label>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend><span>03</span> Location &amp; Work Mode</legend>
+      <label class="field">
+        <span>Preferred locations</span>
+        <textarea name="preferred_locations" rows="4">{{ values.preferred_locations }}</textarea>
+      </label>
+      <div class="checkbox-group" aria-label="Work modes">
+        {% for mode in ['Remote', 'Hybrid', 'Onsite'] %}
+          <label class="checkbox-field">
+            <input type="checkbox" name="work_modes" value="{{ mode }}"{% if mode in values.work_modes %} checked{% endif %}>
+            <span>{{ mode }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend><span>04</span> Salary</legend>
+      <div class="field-grid field-grid--salary">
+        <label class="field">
+          <span>Minimum salary</span>
+          <input type="number" name="minimum_salary" value="{{ values.minimum_salary }}" min="0" step="1" inputmode="decimal">
+        </label>
+        <label class="field">
+          <span>Currency</span>
+          <input name="salary_currency" value="{{ values.salary_currency }}" minlength="3" maxlength="3" required>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend><span>05</span> Exclusions &amp; Notes</legend>
+      <label class="field">
+        <span>Excluded keywords</span>
+        <textarea name="excluded_keywords" rows="4">{{ values.excluded_keywords }}</textarea>
+      </label>
+      <label class="field">
+        <span>Notes</span>
+        <textarea name="notes" rows="5" maxlength="5000">{{ values.notes }}</textarea>
+      </label>
+    </fieldset>
+
+    <div class="form-actions">
+      <button class="button" type="submit">{{ 'Save Changes' if profile else 'Create Profile' }}</button>
+      <a class="text-link" href="/profiles">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

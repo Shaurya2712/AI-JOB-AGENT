@@ -4,6 +4,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import PROJECT_ROOT, Settings
 
@@ -40,6 +41,10 @@ def create_database_engine(database_url: str) -> Engine:
                 cursor.close()
 
     return engine
+
+
+def create_session_factory(engine: Engine) -> sessionmaker[Session]:
+    return sessionmaker(bind=engine, expire_on_commit=False)
 
 
 def run_migrations(settings: Settings) -> None:

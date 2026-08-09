@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Profiles · {{ app_name }}{% endblock %}
+
+{% block content %}
+  <section class="page-header" aria-labelledby="page-title">
+    <div>
+      <p class="eyebrow">Job search / Profiles</p>
+      <h1 id="page-title">Candidate Profiles</h1>
+      <p class="page-intro">Keep separate targets active for different roles, skills, and location preferences.</p>
+    </div>
+    <a class="button" href="/profiles/new">New Profile</a>
+  </section>
+
+  {% if profiles %}
+    <div class="profile-list">
+      {% for profile in profiles %}
+        <article class="profile-record" id="profile-{{ profile.id }}">
+          <header class="profile-record__header">
+            <div>
+              <p class="section-number">Profile {{ "%02d"|format(loop.index) }}</p>
+              <h2>{{ profile.name }}</h2>
+            </div>
+            <div class="profile-record__actions">
+              <span class="badge badge--{{ 'success' if profile.is_active else 'muted' }}">
+                {{ 'Active' if profile.is_active else 'Inactive' }}
+              </span>
+              <a class="text-link" href="/profiles/{{ profile.id }}/edit">Edit profile</a>
+            </div>
+          </header>
+
+          <dl class="profile-facts">
+            <div><dt>Experience</dt><dd>{{ profile.years_experience|round(1) }} years</dd></div>
+            <div><dt>Work modes</dt><dd>{{ profile.work_modes_json|join(', ') or 'Any' }}</dd></div>
+            <div><dt>Locations</dt><dd>{{ profile.preferred_locations_json|join(', ') or 'Any' }}</dd></div>
+            <div>
+              <dt>Minimum salary</dt>
+              <dd>
+                {% if profile.minimum_salary is not none %}
+                  {{ profile.salary_currency }} {{ "{:,.0f}".format(profile.minimum_salary) }}
+                {% else %}
+                  Not set
+                {% endif %}
+              </dd>
+            </div>
+          </dl>
+
+          <div class="profile-columns">
+            <section>
+              <h3>Target roles</h3>
+              <ul class="tag-list">
+                {% for role in profile.target_roles_json %}<li>{{ role }}</li>{% endfor %}
+              </ul>
+            </section>
+            <section>
+              <h3>Skills</h3>
+              {% if profile.skills_json %}
+                <ul class="tag-list">
+                  {% for skill in profile.skills_json %}<li>{{ skill }}</li>{% endfor %}
+                </ul>
+              {% else %}
+                <p class="muted-copy">No skills added.</p>
+              {% endif %}
+            </section>
+          </div>
+
+          {% if profile.notes %}
+            <p class="profile-notes"><strong>Notes</strong> {{ profile.notes }}</p>
+          {% endif %}
+
+          <section class="suggestions" aria-labelledby="suggestions-{{ profile.id }}">
+            <div class="suggestions__heading">
+              <h3 id="suggestions-{{ profile.id }}">AI Suggestions</h3>
+              <p>Suggestions change this profile only after you accept them.</p>
+            </div>
+            {% if profile.suggestions %}
+              <div class="suggestion-list">
+                {% for suggestion in profile.suggestions %}
+                  <div class="suggestion-row">
+                    <div>
+                      <p><span class="badge">{{ suggestion.suggestion_type }}</span> <strong>{{ suggestion.value }}</strong></p>
+                      <p>{{ suggestion.rationale }}</p>
+                    </div>
+                    {% if suggestion.status == "pending" %}
+                      <div class="suggestion-row__actions">
+                        <form method="post" action="/profiles/{{ profile.id }}/suggestions/{{ suggestion.id }}/accept">
+                          <button class="button button--small" type="submit">Accept</button>
+                        </form>
+                        <form method="post" action="/profiles/{{ profile.id }}/suggestions/{{ suggestion.id }}/reject">
+                          <button class="button button--small button--secondary" type="submit">Reject</button>
+                        </form>
+                      </div>
+                    {% else %}
+                      <span class="badge badge--{{ 'success' if suggestion.status == 'accepted' else 'muted' }}">
+                        {{ suggestion.status|capitalize }}
+                      </span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted-copy">No suggestions are waiting for review.</p>
+            {% endif %}
+          </section>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <p class="empty-state__label">Start here</p>
+      <h2>Create your first candidate profile.</h2>
+      <p>Profiles keep each job search focused without restricting you to a single target.</p>
+    </div>
+  {% endif %}
+{% endblock %}

@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation is complete. M02 has not started.
+M01 Project Foundation and M02 Candidate Profiles are complete. M03 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -80,6 +80,8 @@ The planned direct dependencies are deliberately small. Transitive packages will
 
 M01 added only `alembic`, `fastapi`, `jinja2`, `pydantic-settings`, `sqlalchemy`, and `uvicorn` as direct runtime dependencies. It added `httpx` and `pytest` in the optional test group. The other packages below remain approved plans for their owning future modules and have not been added as direct dependencies.
 
+M02 added `pydantic` as a direct validation dependency and `python-multipart` for browser form parsing. Both were already explicitly approved by the frozen architecture and no other dependencies were added.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -119,7 +121,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | Module | Scope | Focused acceptance/test intent | Status |
 |---|---|---|---|
 | M01 Project Foundation | FastAPI, config, SQLite, migrations, templates, theme tokens, health endpoint, `.env.example` | Start command works; dashboard shell and health load; DB migrates; zero credentials required | Complete |
-| M02 Candidate Profiles | Multiple profiles and approval-gated AI role/skill suggestions | Multiple profiles may be active; accepting/rejecting suggestions is explicit; pending suggestions never mutate profiles | Pending |
+| M02 Candidate Profiles | Multiple profiles and approval-gated AI role/skill suggestions | Multiple profiles may be active; accepting/rejecting suggestions is explicit; pending suggestions never mutate profiles | Complete |
 | M03 Resumes | Multiple local resumes per profile, safe TXT/PDF/DOCX extraction, primary selection | Extracted text is persisted and readable by matching; upload boundaries are enforced | Pending |
 | M04 Company Registry + Seeds | Company/provider metadata and seed import | Seed load is idempotent and preserves scan metadata | Pending |
 | M05 Query Generation + Web Discovery | Profile-derived queries, search abstraction, initial Brave Search adapter, persistent discoveries | Duplicate companies are avoided; discovery failure does not block known ATS scans | Pending |
@@ -194,6 +196,66 @@ Issues discovered:
 - The initially resolved Starlette test wrapper warned that its synchronous `TestClient` path is deprecated. Focused tests now use `httpx.ASGITransport` directly, removing the warning without another dependency.
 - No unresolved M01 blocker or failure remains.
 
+## M02 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- `candidate_profiles` persistence for name, active state, target roles, role synonyms, skills, years of experience, preferred locations, work modes, minimum salary/currency, excluded keywords, notes, and timestamps.
+- `profile_suggestions` persistence for role/skill suggestions, rationale, pending/accepted/rejected status, and creation time.
+- Multiple simultaneously active profiles with no singleton or uniqueness restriction on active state.
+- Pydantic validation and bounded normalization for profile form values while preserving ordered, case-insensitive unique lists.
+- A small SQLAlchemy repository/service boundary for profile creation, editing, listing, and suggestion decisions.
+- Atomic suggestion decisions: recording or rejecting a suggestion never changes a profile; accepting a pending skill or role suggestion adds only that approved value; decided suggestions cannot be applied again.
+- Server-rendered profile list, new-profile, and edit-profile pages integrated into the existing editorial navigation/theme.
+- Explicit Accept and Reject actions for stored AI suggestions. Suggestion generation remains deferred to M15.
+- Default target roles and role synonyms from the frozen product scope in the new-profile form.
+- Alembic revision `20260809_0002` for only the two M02 tables and their small supporting indexes/constraints. No resume or M03 table was created.
+
+Files created:
+
+- `app/models/base.py`, `app/models/profiles.py`, and `app/models/__init__.py`
+- `app/schemas/profiles.py` and `app/schemas/__init__.py`
+- `app/repositories/profiles.py` and `app/repositories/__init__.py`
+- `app/services/profiles.py` and `app/services/__init__.py`
+- `app/web/dependencies.py`, `app/web/profiles.py`, `app/web/templates/profiles.html`, and `app/web/templates/profile_form.html`
+- `migrations/versions/20260809_0002_candidate_profiles.py`
+- `tests/module/test_m02_profiles.py`
+
+Files changed:
+
+- `pyproject.toml`, `app/db.py`, `app/main.py`, and `migrations/env.py`
+- `app/web/routes.py`, `app/web/templates/base.html`, and `app/web/static/styles.css`
+- `README.md` and `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: `pydantic` and `python-multipart`
+- Test: none; M02 reuses the existing `pytest` and `httpx` test dependencies
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `python -m pytest tests/module/test_m02_profiles.py` -> 3 passed
+- Multiple-profile browser workflow -> two profiles remained active and every frozen profile field persisted
+- Profile edit workflow -> fields and active state persisted
+- Suggestion workflow -> pending profile unchanged, accepted skill added, rejected role not added, statuses persisted, repeated decision returned HTTP 409
+- `alembic upgrade head` against a temporary database -> `20260809_0002 (head)`
+- `alembic check` against the migrated database -> no new upgrade operations detected
+- Migrated tables -> `alembic_version`, `candidate_profiles`, and `profile_suggestions` only
+- `python -m pip check` -> no broken requirements
+- `python -m compileall -q app migrations tests/module/test_m02_profiles.py` -> passed
+- `git diff --check` -> passed
+
+Acceptance result: all M02 acceptance criteria pass. Multiple profiles can coexist and remain active. AI suggestions are persisted as pending without mutating profile roles or skills, rejection leaves the profile unchanged, and only explicit acceptance updates the relevant profile field.
+
+Issues discovered:
+
+- No M02 test or migration failures remain.
+- Browser form parsing required the explicitly approved lightweight `python-multipart` dependency; no other new runtime infrastructure was needed.
+- AI suggestion generation is intentionally absent until M15; M02 provides only persistence and approval/rejection behavior.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -210,7 +272,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M02 when explicitly requested.
+There are no genuine blockers to starting M03 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -218,4 +280,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M01. Do not begin M02 until explicitly requested.
+Stop after M02. Do not begin M03 until explicitly requested.

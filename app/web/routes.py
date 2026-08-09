@@ -21,7 +21,7 @@ def dashboard(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
-        context={"app_name": settings.app_name},
+        context={"app_name": settings.app_name, "active_nav": "dashboard"},
     )
 
 

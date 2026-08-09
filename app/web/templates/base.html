@@ -17,9 +17,9 @@
         </a>
         <nav aria-label="Primary navigation">
           <ul class="nav-list">
-            <li><a href="/" aria-current="page">Dashboard</a></li>
+            <li><a href="/"{% if active_nav == "dashboard" %} aria-current="page"{% endif %}>Dashboard</a></li>
             <li><span aria-disabled="true">Jobs</span></li>
-            <li><span aria-disabled="true">Profiles</span></li>
+            <li><a href="/profiles"{% if active_nav == "profiles" %} aria-current="page"{% endif %}>Profiles</a></li>
             <li><span aria-disabled="true">Companies</span></li>
             <li><span aria-disabled="true">Scans</span></li>
             <li><span aria-disabled="true">Settings</span></li>
