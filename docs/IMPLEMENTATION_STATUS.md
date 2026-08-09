@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M20 Telegram are complete. M21 has not started.
+M01 Project Foundation through M21 Logs / Scan Health are complete. M22 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -118,6 +118,8 @@ M19 added the architecture-approved `apscheduler` 3.x runtime dependency for one
 
 M20 added no dependency; Telegram delivery reuses the architecture-approved `httpx` runtime client, while destination and idempotency persistence reuse SQLAlchemy/Alembic.
 
+M21 added no dependency; persistent run/source health uses the existing SQLite, SQLAlchemy, Alembic, FastAPI, and Jinja2 stack, with standard-library task-local counters for connector retry instrumentation.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -176,7 +178,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M18 Job Detail + State | Reading-oriented detail, original URL, Save/Applied/Ignore, resume/note | State persists across rediscovery and applied metadata is retained | Complete |
 | M19 Scheduler + Search Now | Configurable four-hour default, common pipeline, run visibility, overlap protection | Manual/scheduled paths match and concurrent scans are prevented | Complete |
 | M20 Telegram | Three destination types and notification idempotency | Recommendation, application, and summary events route correctly without duplicates | Complete |
-| M21 Logs / Scan Health | Run/source results, counts, failures, recent health | Successful, partial, and failed scans remain inspectable with bounded error details | Pending |
+| M21 Logs / Scan Health | Run/source results, counts, failures, recent health | Successful, partial, and failed scans remain inspectable with bounded error details | Complete |
 | M22 Backup / Restore | Portable archive for DB-backed state, settings, and resume files | Round trip restores required data while excluding secrets | Pending |
 | M23 Final System Verification | Frozen 21-step end-to-end workflow after M01–M22 pass | Run full workflow, macOS/Linux setup verification, restart/persistence check, and defect-only fixes | Final Verification |
 
@@ -1397,6 +1399,82 @@ Issues discovered:
 - Live delivery still requires a user-owned bot token and chat IDs. Missing credentials are an expected Not configured state, not an application-start blocker.
 - M21 remains responsible for durable scan/source logs, run history, counts, and recent health presentation.
 
+## M21 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- Frozen `scan_runs` and `scan_source_results` models and migration with constrained trigger/status values, nonnegative counts, indexed recent-history access, cascading run/source ownership, nullable company references, and the M20 notification-log foreign key to persistent runs.
+- One short-transaction `ScanHistoryService` used by the existing M19 controller. A Running record is committed before pipeline execution; Success, Partial, Failed, and shutdown-interrupted completion updates all frozen counters and bounded summary/error detail.
+- Per-company source outcomes emitted by the existing scan pipeline after fetch and persistence: timing, source type, success/failure, fetched/new/updated counts, bounded error, and retry count. Connector-family setup failures remain visible with a nullable company.
+- Task-local, concurrency-safe retry instrumentation around the existing safe HTTP retries in Greenhouse, Lever, Ashby, Workday, and generic career-page connectors. Parallel sources and child request tasks retain separate source counters without a shared global mutable count.
+- Startup recovery for rows left Running by a prior process interruption. They become Failed with a completion timestamp, incremented error count, and a bounded explanatory summary before scheduler startup.
+- The most recent persisted run initializes the M19 dashboard snapshot after restart, preserving latest scan status/count visibility instead of reverting to Idle.
+- A lightweight `/scans` page and enabled Scans navigation showing the latest 25 run records, current/latest status, recent Success versus Partial/Failed health, all frozen run counters, summaries, and the latest 50 source failures with retry counts.
+- Run summaries persist otherwise non-source failures such as discovery, matching, and unexpected pipeline errors in the existing frozen `summary` field rather than inventing another table or schema column.
+- Telegram scan-summary logs now populate their frozen nullable `scan_run_id` after the run record is finalized, preserving the M20 event flow and referential integrity.
+- No M22 archive, export/import, restore workflow, secret backup, retention scheduler, arbitrary analytics, external logging service, queue, or infrastructure.
+
+Files created:
+
+- `app/models/scan_history.py`
+- `app/services/scan_history.py`
+- `app/web/scans.py`
+- `app/web/templates/scans.html`
+- `migrations/versions/20260809_0009_scan_history.py`
+- `tests/module/test_m21_scan_history.py`
+
+Files changed:
+
+- `app/main.py`
+- `app/models/__init__.py`
+- `app/models/notifications.py`
+- `app/providers/jobs/base.py`
+- `app/providers/jobs/greenhouse.py`
+- `app/providers/jobs/lever.py`
+- `app/providers/jobs/ashby.py`
+- `app/providers/jobs/workday.py`
+- `app/providers/jobs/generic.py`
+- `app/services/job_collection.py`
+- `app/services/notifications.py`
+- `app/services/scans.py`
+- `app/web/static/styles.css`
+- `app/web/templates/base.html`
+- `README.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m21_scan_history.py` -> 3 passed.
+- Success/Partial workflow -> two guarded controller runs persisted their trigger, timing, status, all run counts, one successful source outcome, one failed source outcome, bounded error text, retry count, and scan-summary notification links to the matching run IDs.
+- Restart workflow -> a second application process over the same SQLite file restored the latest Partial status/counts on the dashboard and retained both run records plus the source failure on `/scans`.
+- Failed workflow -> an unexpected runner exception persisted a Failed record with only a sanitized generic error; private exception text did not enter the database or page.
+- Interrupted workflow -> a committed Running record from the prior process became Failed at the next startup with a finish time, incremented error count, and inspectable restart explanation.
+- Pipeline/source workflow -> a real normalized job persistence created a successful source outcome with fetched/new counts, a failed connector outcome retained its bounded error, and task-local retry instrumentation propagated a retry count of one through the collection contract.
+- Recent-health UI -> Success, Partial, and Failed rows, frozen counts/summaries, company/source context, error details, and retry counts rendered from persisted records with 25-run/50-failure query limits.
+- Fresh SQLite migration round trip `upgrade head -> downgrade 20260809_0008 -> upgrade head` -> passed; Alembic reported `20260809_0009 (head)`.
+- Targeted `compileall` -> passed.
+- `.venv/bin/python -m pip check` -> no broken requirements.
+- `git diff --check` -> passed.
+- The full application test suite was intentionally not run under the frozen testing policy.
+
+Acceptance result: all M21 acceptance criteria pass. Successful, Partial, unexpected Failed, and process-interrupted runs remain durable and inspectable; source failures retain bounded context and retry counts; frozen run/source counters are visible; and recent health survives application restart.
+
+Issues discovered:
+
+- No unresolved M21 run lifecycle, source-result, count, failure-boundary, retry instrumentation, restart recovery, recent-health query, migration, notification-linkage, or rendering issue remains.
+- SQLite may return timezone-aware timestamps without timezone metadata after persistence; the application records UTC inputs and labels these local stored scan timestamps as UTC consistently with the existing M19 UI.
+- `retry_count` represents actual connector HTTP retries during that company/source collection. It remains zero when no retry occurred; no extra retry layer was added.
+- Only the latest 25 runs and latest 50 source failures are loaded into the browser view to keep memory and query cost bounded. All run/source records remain in SQLite for the frozen backup and final verification workflows.
+- A hard process kill can leave one Running row because no process can finalize work after it is terminated. M21 resolves that state deterministically at the next application startup.
+- M22 remains responsible for one-archive backup/restore of the required local data and resume files. No M22 functionality was started.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -1413,7 +1491,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M21 when explicitly requested.
+There are no genuine blockers to starting M22 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -1421,4 +1499,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M20. Do not begin M21 until explicitly requested.
+Stop after M21. Do not begin M22 until explicitly requested.

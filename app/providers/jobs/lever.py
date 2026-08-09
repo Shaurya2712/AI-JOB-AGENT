@@ -5,7 +5,12 @@ from urllib.parse import quote, urlsplit
 import httpx
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from app.providers.jobs.base import ConnectorJob, JobConnector, JobConnectorError
+from app.providers.jobs.base import (
+    ConnectorJob,
+    JobConnector,
+    JobConnectorError,
+    record_connector_retry,
+)
 
 
 LEVER_GLOBAL_POSTINGS_API = "https://api.lever.co/v0/postings"
@@ -103,6 +108,7 @@ class LeverConnector(JobConnector):
                     },
                 ) as response:
                     if response.status_code >= 500 and attempt == 0:
+                        record_connector_retry()
                         continue
                     if response.is_error:
                         raise _LeverHttpError(response.status_code, skip)
@@ -131,6 +137,7 @@ class LeverConnector(JobConnector):
                 last_error = error
                 if attempt == 1:
                     break
+                record_connector_retry()
 
         raise JobConnectorError("Lever request failed") from last_error
 

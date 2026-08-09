@@ -1,11 +1,19 @@
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
 from sqlalchemy.orm import Session
 
+from app.models.base import utc_now
 from app.models.companies import Company
-from app.providers.jobs.base import ConnectorJob, JobConnector, JobConnectorError
+from app.providers.jobs.base import (
+    ConnectorJob,
+    JobConnector,
+    JobConnectorError,
+    connector_retry_count,
+    reset_connector_retry_count,
+)
 from app.repositories.companies import CompanyRepository
 
 
@@ -20,6 +28,9 @@ class ConnectorSourceResult:
     status: Literal["success", "failed"]
     jobs: tuple[ConnectorJob, ...]
     error_message: str | None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    retry_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -49,6 +60,8 @@ class JobCollectionService:
 
         async def fetch(company: Company) -> ConnectorSourceResult:
             async with semaphore:
+                started_at = utc_now()
+                reset_connector_retry_count()
                 try:
                     source_identifier = (
                         company.careers_url
@@ -63,6 +76,9 @@ class JobCollectionService:
                         status="success",
                         jobs=tuple(jobs),
                         error_message=None,
+                        started_at=started_at,
+                        finished_at=utc_now(),
+                        retry_count=connector_retry_count(),
                     )
                 except JobConnectorError as error:
                     message = str(error)[:MAX_SOURCE_ERROR_CHARS]
@@ -76,6 +92,9 @@ class JobCollectionService:
                     status="failed",
                     jobs=(),
                     error_message=message,
+                    started_at=started_at,
+                    finished_at=utc_now(),
+                    retry_count=connector_retry_count(),
                 )
 
         results = tuple(await asyncio.gather(*(fetch(company) for company in companies)))

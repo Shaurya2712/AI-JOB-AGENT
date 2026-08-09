@@ -7,7 +7,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
-    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -19,6 +18,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.jobs import Job
+    from app.models.scan_history import ScanRun
 
 
 NotificationDestinationType = Literal[
@@ -77,7 +77,10 @@ class NotificationLog(Base):
         nullable=True,
         index=True,
     )
-    scan_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scan_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("scan_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     event_key: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(10), default="pending")
     sent_at: Mapped[datetime | None] = mapped_column(
@@ -88,3 +91,4 @@ class NotificationLog(Base):
 
     destination: Mapped[NotificationDestination] = relationship(back_populates="logs")
     job: Mapped["Job | None"] = relationship()
+    scan_run: Mapped["ScanRun | None"] = relationship()

@@ -5,7 +5,12 @@ from urllib.parse import quote, unquote, urlsplit
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from app.providers.jobs.base import ConnectorJob, JobConnector, JobConnectorError
+from app.providers.jobs.base import (
+    ConnectorJob,
+    JobConnector,
+    JobConnectorError,
+    record_connector_retry,
+)
 
 
 ASHBY_JOB_BOARD_API = "https://api.ashbyhq.com/posting-api/job-board"
@@ -63,6 +68,7 @@ class AshbyConnector(JobConnector):
                     params={"includeCompensation": "false"},
                 ) as response:
                     if response.status_code >= 500 and attempt == 0:
+                        record_connector_retry()
                         continue
                     if response.is_error:
                         raise JobConnectorError(
@@ -93,6 +99,7 @@ class AshbyConnector(JobConnector):
                 last_error = error
                 if attempt == 1:
                     break
+                record_connector_retry()
 
         raise JobConnectorError("Ashby request failed") from last_error
 

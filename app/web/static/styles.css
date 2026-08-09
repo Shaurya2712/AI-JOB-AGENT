@@ -879,6 +879,25 @@ a:focus-visible {
   margin-bottom: 0;
 }
 
+.scan-history-table {
+  min-width: 1180px;
+}
+
+.scan-history-summary,
+.scan-history-error {
+  max-width: 28rem;
+  overflow-wrap: anywhere;
+}
+
+.scan-failure-section {
+  margin-top: var(--space-12);
+}
+
+.badge--error {
+  border-color: color-mix(in srgb, var(--color-error) 35%, var(--color-border));
+  color: var(--color-error);
+}
+
 .job-detail__heading {
   justify-content: space-between;
   gap: var(--space-8);

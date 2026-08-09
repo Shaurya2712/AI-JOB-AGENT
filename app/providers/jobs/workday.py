@@ -8,7 +8,12 @@ from urllib.parse import quote, unquote, urlsplit
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from app.providers.jobs.base import ConnectorJob, JobConnector, JobConnectorError
+from app.providers.jobs.base import (
+    ConnectorJob,
+    JobConnector,
+    JobConnectorError,
+    record_connector_retry,
+)
 
 
 WORKDAY_PAGE_SIZE = 20
@@ -208,6 +213,7 @@ class WorkdayConnector(JobConnector):
                         json=json_body,
                     ) as response:
                         if response.status_code >= 500 and attempt == 0:
+                            record_connector_retry()
                             continue
                         if response.is_error:
                             raise JobConnectorError(
@@ -244,6 +250,7 @@ class WorkdayConnector(JobConnector):
                 last_error = error
                 if attempt == 1:
                     break
+                record_connector_retry()
 
         raise JobConnectorError("Workday request failed") from last_error
 

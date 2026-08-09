@@ -10,12 +10,14 @@ from app.db import create_database_engine, create_session_factory, database_is_r
 from app.providers.telegram import open_telegram_client
 from app.services.companies import CompanyService
 from app.services.notifications import NotificationService
+from app.services.scan_history import ScanHistoryService
 from app.services.scans import ApplicationScanPipeline, ScanController
 from app.tasks.scheduler import ScanScheduler
 from app.web.companies import router as companies_router
 from app.web.jobs import router as jobs_router
 from app.web.profiles import router as profiles_router
 from app.web.routes import STATIC_DIR, router
+from app.web.scans import router as scans_router
 from app.web.settings import router as settings_router
 
 
@@ -33,6 +35,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.engine = engine
         application.state.session_factory = create_session_factory(engine)
         try:
+            scan_history = ScanHistoryService(application.state.session_factory)
+            scan_history.recover_interrupted_runs()
+            initial_scan_snapshot = scan_history.latest_snapshot()
+            application.state.scan_history = scan_history
             with application.state.session_factory() as session:
                 CompanyService(session).import_seed_file(resolved_settings.company_seed_path)
             async with open_telegram_client(resolved_settings) as telegram_client:
@@ -48,6 +54,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         recommendation_notifier=notification_service,
                     ),
                     completion_notifier=notification_service,
+                    history_writer=scan_history,
+                    initial_snapshot=initial_scan_snapshot,
                 )
                 scan_scheduler = ScanScheduler(
                     scan_controller,
@@ -76,6 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(companies_router)
     application.include_router(jobs_router)
     application.include_router(settings_router)
+    application.include_router(scans_router)
     return application
 
 

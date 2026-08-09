@@ -7,7 +7,12 @@ from urllib.parse import quote, urlsplit
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from app.providers.jobs.base import ConnectorJob, JobConnector, JobConnectorError
+from app.providers.jobs.base import (
+    ConnectorJob,
+    JobConnector,
+    JobConnectorError,
+    record_connector_retry,
+)
 
 
 GREENHOUSE_JOBS_API = "https://boards-api.greenhouse.io/v1/boards"
@@ -82,6 +87,7 @@ class GreenhouseConnector(JobConnector):
                     params={"content": "true"},
                 ) as response:
                     if response.status_code >= 500 and attempt == 0:
+                        record_connector_retry()
                         continue
                     if response.is_error:
                         raise JobConnectorError(
@@ -114,6 +120,7 @@ class GreenhouseConnector(JobConnector):
                 last_error = error
                 if attempt == 1:
                     break
+                record_connector_retry()
 
         raise JobConnectorError("Greenhouse request failed") from last_error
 

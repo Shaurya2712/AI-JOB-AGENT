@@ -31,8 +31,23 @@ from app.services.web_discovery import CompanyDiscoveryService
 
 ScanTrigger = Literal["manual", "scheduled"]
 ScanStatus = Literal["idle", "running", "success", "partial", "failed"]
+SourceStatus = Literal["success", "failed"]
 MAX_VISIBLE_SCAN_ERRORS = 20
 MATCH_BATCH_SIZE = 100
+
+
+@dataclass(frozen=True)
+class ScanSourceSnapshot:
+    company_id: int | None
+    source_type: str
+    started_at: datetime
+    finished_at: datetime
+    status: SourceStatus
+    jobs_fetched: int = 0
+    jobs_new: int = 0
+    jobs_updated: int = 0
+    error_message: str | None = None
+    retry_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -47,10 +62,12 @@ class ScanPipelineResult:
     errors_count: int
     errors: tuple[str, ...]
     summary: str
+    source_results: tuple[ScanSourceSnapshot, ...] = ()
 
 
 @dataclass(frozen=True)
 class ScanRunSnapshot:
+    run_id: int | None = None
     status: ScanStatus = "idle"
     trigger_type: ScanTrigger | None = None
     started_at: datetime | None = None
@@ -86,6 +103,18 @@ class ScanCompletionNotifier(Protocol):
         raise NotImplementedError
 
 
+class ScanHistoryWriter(Protocol):
+    def start_run(self, trigger_type: ScanTrigger, started_at: datetime) -> int:
+        raise NotImplementedError
+
+    def finish_run(
+        self,
+        snapshot: ScanRunSnapshot,
+        source_results: tuple[ScanSourceSnapshot, ...],
+    ) -> None:
+        raise NotImplementedError
+
+
 @dataclass
 class _RunCounts:
     companies_checked: int = 0
@@ -98,6 +127,7 @@ class _RunCounts:
     errors_count: int = 0
     errors: list[str] = field(default_factory=list)
     new_job_ids: set[int] = field(default_factory=set)
+    source_results: list[ScanSourceSnapshot] = field(default_factory=list)
 
     def add_error(self, message: str) -> None:
         self.errors_count += 1
@@ -140,6 +170,7 @@ class ApplicationScanPipeline:
             errors_count=counts.errors_count,
             errors=tuple(counts.errors),
             summary=summary,
+            source_results=tuple(counts.source_results),
         )
 
     async def _discover_companies(self, counts: _RunCounts) -> None:
@@ -174,6 +205,7 @@ class ApplicationScanPipeline:
             ("custom", open_generic_career_page_connector),
         )
         for source_type, opener in connector_openers:
+            connector_started_at = utc_now()
             try:
                 async with opener(self.settings) as connector:
                     with self.session_factory() as session:
@@ -186,7 +218,18 @@ class ApplicationScanPipeline:
                 for source_result in result.source_results:
                     self._persist_source(source_result, counts)
             except Exception:
-                counts.add_error(f"{source_type}: connector run failed unexpectedly")
+                error_message = f"{source_type}: connector run failed unexpectedly"
+                counts.add_error(error_message)
+                counts.source_results.append(
+                    ScanSourceSnapshot(
+                        company_id=None,
+                        source_type=source_type,
+                        started_at=connector_started_at,
+                        finished_at=utc_now(),
+                        status="failed",
+                        error_message=error_message,
+                    )
+                )
 
     def _persist_source(
         self,
@@ -194,11 +237,12 @@ class ApplicationScanPipeline:
         counts: _RunCounts,
     ) -> None:
         observed_at = utc_now()
+        started_at = source_result.started_at or observed_at
         if source_result.status == "failed":
-            counts.add_error(
-                source_result.error_message
-                or f"{source_result.source_type}: source collection failed"
+            error_message = source_result.error_message or (
+                f"{source_result.source_type}: source collection failed"
             )
+            counts.add_error(error_message)
             metadata_updated = self._update_company_scan(
                 source_result.company_id,
                 observed_at,
@@ -207,6 +251,17 @@ class ApplicationScanPipeline:
             )
             if not metadata_updated:
                 counts.add_error("Failed to update company scan metadata")
+            counts.source_results.append(
+                ScanSourceSnapshot(
+                    company_id=source_result.company_id,
+                    source_type=source_result.source_type,
+                    started_at=started_at,
+                    finished_at=source_result.finished_at or utc_now(),
+                    status="failed",
+                    error_message=error_message,
+                    retry_count=source_result.retry_count,
+                )
+            )
             return
 
         try:
@@ -217,8 +272,10 @@ class ApplicationScanPipeline:
                     seen_at=observed_at,
                 )
                 seen_job_ids = [result.job.id for result in upserts]
-                counts.jobs_new += sum(result.created for result in upserts)
-                counts.jobs_updated += sum(result.updated for result in upserts)
+                source_jobs_new = sum(result.created for result in upserts)
+                source_jobs_updated = sum(result.updated for result in upserts)
+                counts.jobs_new += source_jobs_new
+                counts.jobs_updated += source_jobs_updated
                 counts.new_job_ids.update(
                     result.job.id for result in upserts if result.created
                 )
@@ -242,9 +299,35 @@ class ApplicationScanPipeline:
             )
             if not metadata_updated:
                 counts.add_error("Failed to update company scan metadata")
+            counts.source_results.append(
+                ScanSourceSnapshot(
+                    company_id=source_result.company_id,
+                    source_type=source_result.source_type,
+                    started_at=started_at,
+                    finished_at=utc_now(),
+                    status="success",
+                    jobs_fetched=len(source_result.jobs),
+                    jobs_new=source_jobs_new,
+                    jobs_updated=source_jobs_updated,
+                    retry_count=source_result.retry_count,
+                )
+            )
         except Exception:
-            counts.add_error(
+            error_message = (
                 f"{source_result.source_type}: failed to persist collected jobs"
+            )
+            counts.add_error(error_message)
+            counts.source_results.append(
+                ScanSourceSnapshot(
+                    company_id=source_result.company_id,
+                    source_type=source_result.source_type,
+                    started_at=started_at,
+                    finished_at=utc_now(),
+                    status="failed",
+                    jobs_fetched=len(source_result.jobs),
+                    error_message=error_message,
+                    retry_count=source_result.retry_count,
+                )
             )
 
     def _update_company_scan(
@@ -333,12 +416,15 @@ class ScanController:
         self,
         runner: ScanRunner,
         completion_notifier: ScanCompletionNotifier | None = None,
+        history_writer: ScanHistoryWriter | None = None,
+        initial_snapshot: ScanRunSnapshot | None = None,
     ) -> None:
         self.runner = runner
         self.completion_notifier = completion_notifier
+        self.history_writer = history_writer
         self._guard = asyncio.Lock()
         self._task: asyncio.Task[ScanRunSnapshot] | None = None
-        self._snapshot = ScanRunSnapshot()
+        self._snapshot = initial_snapshot or ScanRunSnapshot()
 
     def snapshot(self) -> ScanRunSnapshot:
         return self._snapshot
@@ -376,14 +462,20 @@ class ScanController:
             if self._task is not None and not self._task.done():
                 return False
             started_at = utc_now()
+            run_id = (
+                self.history_writer.start_run(trigger_type, started_at)
+                if self.history_writer is not None
+                else None
+            )
             self._snapshot = ScanRunSnapshot(
+                run_id=run_id,
                 status="running",
                 trigger_type=trigger_type,
                 started_at=started_at,
                 summary="Scan is running.",
             )
             self._task = asyncio.create_task(
-                self._execute(trigger_type, started_at),
+                self._execute(trigger_type, started_at, run_id),
                 name=f"job-agent-{trigger_type}-scan",
             )
             return True
@@ -392,11 +484,15 @@ class ScanController:
         self,
         trigger_type: ScanTrigger,
         started_at: datetime,
+        run_id: int | None,
     ) -> ScanRunSnapshot:
+        source_results: tuple[ScanSourceSnapshot, ...] = ()
         try:
             result = await self.runner.run(trigger_type)
+            source_results = result.source_results
             status: ScanStatus = "partial" if result.errors_count else "success"
             snapshot = ScanRunSnapshot(
+                run_id=run_id,
                 status=status,
                 trigger_type=trigger_type,
                 started_at=started_at,
@@ -414,6 +510,7 @@ class ScanController:
             )
         except asyncio.CancelledError:
             self._snapshot = ScanRunSnapshot(
+                run_id=run_id,
                 status="failed",
                 trigger_type=trigger_type,
                 started_at=started_at,
@@ -422,9 +519,12 @@ class ScanController:
                 errors=("Scan stopped during application shutdown",),
                 summary="Scan stopped during application shutdown.",
             )
+            if self.history_writer is not None:
+                self.history_writer.finish_run(self._snapshot, source_results)
             raise
         except Exception:
             snapshot = ScanRunSnapshot(
+                run_id=run_id,
                 status="failed",
                 trigger_type=trigger_type,
                 started_at=started_at,
@@ -434,6 +534,8 @@ class ScanController:
                 summary="Scan failed unexpectedly.",
             )
         self._snapshot = snapshot
+        if self.history_writer is not None:
+            self.history_writer.finish_run(snapshot, source_results)
         if self.completion_notifier is not None:
             try:
                 await self.completion_notifier.notify_scan_summary(snapshot)

@@ -41,6 +41,7 @@ class TelegramSender(Protocol):
 
 
 class CompletedScan(Protocol):
+    run_id: int | None
     status: str
     trigger_type: str | None
     started_at: datetime | None
@@ -259,6 +260,7 @@ class NotificationService:
                 f"scan-summary:{scan.trigger_type}:{scan.started_at.isoformat()}"
             ),
             message=message,
+            scan_run_id=scan.run_id,
         )
 
     async def _deliver(
@@ -268,12 +270,14 @@ class NotificationService:
         event_key: str,
         message: str,
         job_id: int | None = None,
+        scan_run_id: int | None = None,
     ) -> NotificationResult:
         normalized_event_key = event_key[:255]
         deliveries = self._reserve_deliveries(
             destination_type,
             event_key=normalized_event_key,
             job_id=job_id,
+            scan_run_id=scan_run_id,
         )
         if not deliveries:
             return NotificationResult(skipped=1)
@@ -314,6 +318,7 @@ class NotificationService:
         *,
         event_key: str,
         job_id: int | None,
+        scan_run_id: int | None,
     ) -> tuple[_Delivery, ...]:
         with self.session_factory() as session:
             destinations = tuple(
@@ -339,6 +344,7 @@ class NotificationService:
                     existing = NotificationLog(
                         destination_id=destination.id,
                         job_id=job_id,
+                        scan_run_id=scan_run_id,
                         event_key=event_key,
                         status="pending",
                     )

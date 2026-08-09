@@ -8,7 +8,12 @@ from urllib.parse import parse_qsl, urljoin, urlsplit, urlunsplit
 from bs4 import BeautifulSoup, Tag
 import httpx
 
-from app.providers.jobs.base import ConnectorJob, JobConnector, JobConnectorError
+from app.providers.jobs.base import (
+    ConnectorJob,
+    JobConnector,
+    JobConnectorError,
+    record_connector_retry,
+)
 
 
 MAX_GENERIC_JOB_LINKS = 50
@@ -167,6 +172,7 @@ class GenericCareerPageConnector(JobConnector):
                         },
                     ) as response:
                         if response.status_code >= 500 and attempt == 0:
+                            record_connector_retry()
                             continue
                         if response.is_error:
                             raise JobConnectorError(
@@ -208,6 +214,7 @@ class GenericCareerPageConnector(JobConnector):
                 last_error = error
                 if attempt == 1:
                     break
+                record_connector_retry()
 
         raise JobConnectorError("Generic career-page request failed") from last_error
 
