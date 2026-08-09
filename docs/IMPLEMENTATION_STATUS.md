@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M11 Generic Career Page Fallback are complete. M12 has not started.
+M01 Project Foundation through M12 Normalization + Deduplication are complete. M13 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -100,6 +100,8 @@ M10 added no dependency; the Workday adapter reuses the existing `httpx`, Pydant
 
 M11 added `beautifulsoup4` as the architecture-approved direct runtime HTML parser. It uses the standard-library `html.parser` backend and adds no compiled parser, browser, or JavaScript runtime.
 
+M12 added no dependency; canonicalization, hashing, validation, and transactional persistence use the standard library plus the existing SQLAlchemy/Alembic stack.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -149,7 +151,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M09 Ashby Connector | Fetch and normalize open Ashby jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Complete |
 | M10 Workday Connector | Pragmatic supported Workday collection behind the same contract | Deterministic fixtures validate the bounded implementation; unsupported variants fail safely | Complete |
 | M11 Generic Career Page Fallback | Bounded best-effort HTML job extraction | Time, size, type, URL/domain, and link limits hold; unreliable pages become unsupported | Complete |
-| M12 Normalization + Deduplication | Canonical job schema, URL/source/fingerprint identity, upsert | Rediscovery remains one row; changes update; `last_seen_at` refreshes | Pending |
+| M12 Normalization + Deduplication | Canonical job schema, URL/source/fingerprint identity, upsert | Rediscovery remains one row; changes update; `last_seen_at` refreshes | Complete |
 | M13 Lifecycle | Missing counters and open/possibly-closed/closed transitions | One absence stays open; repeated confirmed absence transitions; reappearance resets; explicit closure closes | Pending |
 | M14 Deterministic Qualification | Cheap exclusions and flexible experience/seniority/skill handling | Targeted cases reject only specified obvious mismatches and retain valid partial/senior matches | Pending |
 | M15 AI Provider Layer + Matching | OpenAI/Anthropic/Gemini HTTP adapters, structured matching, suggestions, persistence | Malformed output cannot crash scans; unchanged jobs need not rescore; secrets/text boundaries are safe | Pending |
@@ -799,6 +801,71 @@ Issues discovered:
 - DNS hostnames are syntactically validated and local/private literal addresses are rejected, but M11 does not add a DNS resolver or network service. Requests remain bounded to the configured client with redirects disabled.
 - Live career pages were not called. All M11 request, parsing, failure, and security-boundary behavior is verified with deterministic local HTTP fixtures.
 
+## M12 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- A normalized `jobs` table and SQLAlchemy model covering the complete frozen job schema: company/source identity, canonical URL, display and normalized title, location breakdown fields, remote/employment types, description and hash, compensation, experience, skills, posting/discovery/last-seen timestamps, missing count, lifecycle state, optional source payload, and timestamps.
+- Company-scoped unique constraints for connector source identity and canonical URL, plus indexed fallback signature, description hash, last-seen time, and company/lifecycle lookup paths.
+- Database defaults and checks for an initial `open` lifecycle state and a nonnegative missing-scan count without implementing M13 lifecycle transitions.
+- Deterministic connector normalization for source type/ID, Unicode/whitespace-stable titles, locations, descriptions, and a search-friendly normalized title that retains meaningful tokens such as C++, C#, and .NET.
+- Canonical HTTP(S) job URLs with lowercase scheme/host, default-port removal, root/trailing-slash stability, fragment removal, known tracking-parameter removal, and deterministic query ordering.
+- SHA-256 description fingerprints that ignore insignificant whitespace/case differences and a company/title/location/description fallback signature for sources whose connector identity and URL change.
+- Dedupe precedence of company-scoped connector identity, canonical URL, then the conservative fallback signature; empty descriptions do not use fallback fingerprint matching.
+- A transactional single/batch upsert service that creates once, updates connector-owned fields in place, preserves `discovered_at`, advances but never regresses `last_seen_at`, and reports created/updated/materially-changed state.
+- Preservation of lifecycle and future enrichment fields on rediscovery; M12 does not reset missing counters, transition lifecycle, infer locations/work mode/employment/compensation/experience/skills, or clear future scoring/state.
+- Atomic rollback when any item in a normalization batch is invalid, while preserving data committed before that batch.
+- No scan orchestration, lifecycle transitions, deterministic qualification, AI scoring, user state, dashboard, or M13+ functionality; M13 was not started.
+
+Files created:
+
+- `app/models/jobs.py`
+- `app/repositories/jobs.py`
+- `app/services/job_normalization.py`
+- `app/services/jobs.py`
+- `migrations/versions/20260809_0005_jobs.py`
+- `tests/module/test_m12_job_normalization.py`
+
+Files changed:
+
+- `app/models/__init__.py`
+- `app/models/companies.py`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `.venv/bin/python -m pytest tests/module/test_m12_job_normalization.py` -> 3 passed
+- Migration/schema workflow -> a fresh database upgraded through revision `20260809_0005` and accepted normalized jobs with required constraints/defaults
+- Normalization workflow -> source identity, Unicode/whitespace, canonical URL, title/location/description, description hash, and fallback signature normalized deterministically
+- Rediscovery workflow -> the same connector job observed twice remained one row, retained its original `discovered_at`, and refreshed `last_seen_at`
+- Change workflow -> changed title, location, and description updated the existing row and reported a material change without resetting lifecycle fields owned by M13
+- Multi-identity workflow -> different source identities with the same canonical URL, then a different URL with the same fallback signature, converged on one job row
+- Atomicity workflow -> one invalid URL in a two-job batch rolled back the entire batch and left previously committed job data unchanged
+- `.venv/bin/python -m compileall -q app/models/jobs.py app/models/companies.py app/models/__init__.py app/services/job_normalization.py app/repositories/jobs.py app/services/jobs.py migrations/versions/20260809_0005_jobs.py tests/module/test_m12_job_normalization.py` -> passed
+- Disposable SQLite `alembic upgrade head` through `20260809_0005`, followed by `alembic check` -> no new upgrade operations detected
+- `.venv/bin/python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M12 acceptance criteria pass. Jobs persist in the canonical schema, connector identity/canonical URL/fallback fingerprints prevent rediscovery duplicates, connector changes update the existing row, `discovered_at` remains stable, and `last_seen_at` refreshes on later observations.
+
+Issues discovered:
+
+- No M12 schema, normalization, identity, upsert, timestamp, or transaction failure remains.
+- Fallback matching deliberately requires a nonempty description and includes its normalized fingerprint. This avoids merging separate same-title/same-location requisitions when a source supplies too little content, at the cost of not guessing that such sparse records are duplicates.
+- Job uniqueness is company-scoped. Duplicate company records are intentionally not reconciled in M12; M04/M05 own company identity and already prevent normal duplicate registry insertion.
+- Connector updates own only source identity, canonical URL, title, location text, description, hashes, and last-seen/update timestamps. Nullable canonical enrichment fields remain available for later owning modules and are not fabricated from unstructured text here.
+- SQLite returns stored timezone values without timezone metadata. M12 requires timezone-aware observation inputs, converts them to UTC, and compares persisted naive values as UTC so `last_seen_at` cannot regress.
+- `source_payload_json` is nullable and remains empty because the frozen connector contract does not expose raw payloads. M12 does not expand that contract or persist unbounded source responses.
+- No external sites were called. All M12 behavior is verified against a temporary migrated SQLite database and deterministic connector records.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -815,7 +882,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M12 when explicitly requested.
+There are no genuine blockers to starting M13 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -823,4 +890,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M11. Do not begin M12 until explicitly requested.
+Stop after M12. Do not begin M13 until explicitly requested.

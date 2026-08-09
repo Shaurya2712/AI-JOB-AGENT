@@ -1,9 +1,14 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, utc_now
+
+
+if TYPE_CHECKING:
+    from app.models.jobs import Job
 
 
 class Company(Base):
@@ -23,3 +28,8 @@ class Company(Base):
     total_jobs_seen: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    jobs: Mapped[list["Job"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+    )
