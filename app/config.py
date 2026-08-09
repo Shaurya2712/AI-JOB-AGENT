@@ -36,6 +36,13 @@ class Settings(BaseSettings):
         le=25 * 1024 * 1024,
     )
     job_lifecycle_close_after_missing_scans: int = Field(default=3, ge=3, le=20)
+    ai_provider: Literal["disabled", "openai", "anthropic", "gemini"] = "disabled"
+    ai_model: str = Field(default="", max_length=120)
+    openai_api_key: SecretStr | None = None
+    anthropic_api_key: SecretStr | None = None
+    gemini_api_key: SecretStr | None = None
+    ai_timeout_seconds: float = Field(default=45.0, ge=5.0, le=120.0)
+    ai_concurrency: int = Field(default=2, ge=1, le=3)
 
     model_config = SettingsConfigDict(
         env_prefix="JOB_AGENT_",

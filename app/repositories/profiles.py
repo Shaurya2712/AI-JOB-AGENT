@@ -49,3 +49,13 @@ class ProfileRepository:
             ProfileSuggestion.profile_id == profile_id,
         )
         return self.session.scalar(statement)
+
+    def list_suggestion_keys(self, profile_id: int) -> set[tuple[str, str]]:
+        statement = select(
+            ProfileSuggestion.suggestion_type,
+            ProfileSuggestion.value,
+        ).where(ProfileSuggestion.profile_id == profile_id)
+        return {
+            (suggestion_type, value.casefold())
+            for suggestion_type, value in self.session.execute(statement)
+        }

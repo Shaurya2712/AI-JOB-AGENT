@@ -1,6 +1,6 @@
 # Job Agent
 
-Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M14 Deterministic Qualification.
+Job Agent V1 is a lightweight, local-first job-hunting dashboard. The current implementation contains M01 Project Foundation through M15 AI Provider Layer + Matching.
 
 ## Requirements
 
@@ -33,6 +33,8 @@ Candidate profiles can be created and edited at <http://127.0.0.1:8000/profiles>
 
 The local company registry is available at <http://127.0.0.1:8000/companies>. The bundled company seed file is imported idempotently at startup. Discovery, ATS detection, supported job-source connectors, normalization/deduplication, and lifecycle handling are implemented as application services; scan orchestration and browser job views remain later modules.
 
+AI matching is disabled by default, so the application still starts without credentials. To configure M15 matching, set `JOB_AGENT_AI_PROVIDER` to `openai`, `anthropic`, or `gemini`, set `JOB_AGENT_AI_MODEL`, and provide only the corresponding API key in the local `.env`. Never commit that file. The scan pipeline and browser match views remain later modules.
+
 To apply migrations without starting the web application:
 
 ```bash
@@ -55,4 +57,10 @@ pytest tests/module/test_m13_job_lifecycle.py
 
 ```bash
 pytest tests/module/test_m14_job_qualification.py
+```
+
+## M15 Focused Tests
+
+```bash
+pytest tests/module/test_m15_ai_matching.py
 ```

@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M14 Deterministic Qualification are complete. M15 has not started.
+M01 Project Foundation through M15 AI Provider Layer + Matching are complete. M16 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -106,6 +106,8 @@ M13 added no dependency; lifecycle reconciliation uses the existing job model, S
 
 M14 added no dependency; deterministic qualification uses immutable standard-library results and the existing profile/job models.
 
+M15 added no dependency; the three AI adapters reuse the architecture-approved `httpx` and Pydantic packages already installed as direct runtime dependencies.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -158,7 +160,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M12 Normalization + Deduplication | Canonical job schema, URL/source/fingerprint identity, upsert | Rediscovery remains one row; changes update; `last_seen_at` refreshes | Complete |
 | M13 Lifecycle | Missing counters and open/possibly-closed/closed transitions | One absence stays open; repeated confirmed absence transitions; reappearance resets; explicit closure closes | Complete |
 | M14 Deterministic Qualification | Cheap exclusions and flexible experience/seniority/skill handling | Targeted cases reject only specified obvious mismatches and retain valid partial/senior matches | Complete |
-| M15 AI Provider Layer + Matching | OpenAI/Anthropic/Gemini HTTP adapters, structured matching, suggestions, persistence | Malformed output cannot crash scans; unchanged jobs need not rescore; secrets/text boundaries are safe | Pending |
+| M15 AI Provider Layer + Matching | OpenAI/Anthropic/Gemini HTTP adapters, structured matching, suggestions, persistence | Malformed output cannot crash scans; unchanged jobs need not rescore; secrets/text boundaries are safe | Complete |
 | M16 Dashboard + Filters | Paginated job views, required metrics, filters, score labels | Open 85+ jobs are quickly findable; applied/ignored and location filters work | Pending |
 | M17 Daily Action Queue | Ranked configurable queue, default 10 | Only strongest open, relevant, unhandled jobs appear | Pending |
 | M18 Job Detail + State | Reading-oriented detail, original URL, Save/Applied/Ignore, resume/note | State persists across rediscovery and applied metadata is retained | Pending |
@@ -985,6 +987,76 @@ Issues discovered:
 - The three-year experience allowance is a small fixed V1 rule, not a new runtime setting; this keeps qualification flexible without adding unspecified configuration.
 - Qualification is evaluated per profile and is not persisted because the frozen data model defines no qualification record or job-level profile-independent flag. M15 can score only results that pass this gate.
 
+## M15 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- The frozen `job_matches` persistence model with one current match per job/profile, provider/model/scoring version, all required score components, derived recommendation label, matching/missing skills, concerns, explanation, optional suggested resume, source-job hash, and score timestamp.
+- Alembic revision `20260809_0006` with score/label checks, job/profile/resume foreign keys, cascade/set-null behavior, uniqueness, and profile-score/job indexes.
+- One strict Pydantic output contract with bounded scores, lists, strings, explanation, resume ID, and role/skill profile suggestions; unexpected or malformed fields are rejected before persistence.
+- An `AIProvider` boundary, disabled zero-credential provider, settings-driven provider factory, and direct `httpx` adapters for OpenAI Responses, Anthropic Messages, and Gemini Generate Content.
+- Provider-native structured requests: OpenAI JSON-schema output with response storage disabled, Anthropic forced schema-backed tool input, and Gemini JSON-schema response configuration; every result is independently revalidated by Pydantic.
+- A shared one-MiB response limit, configured 5–120 second timeout, configured one-to-three connection limit, redirects disabled through the factory, and one safe retry for transport or HTTP 5xx failures.
+- A profile-specific asynchronous matching service that builds a bounded prompt from the job, profile, and up to 20 resumes, with a 30,000-character job-description cap and 60,000-character total resume-text cap.
+- Explicit untrusted-data delimiters and system instructions preventing job descriptions, notes, or resume text from overriding matching instructions; secrets and raw provider responses are never placed in prompts or errors.
+- Transactional match create/update behavior, server-derived frozen score labels, and validation that a suggested resume belongs to the scored profile.
+- AI role/skill suggestions persisted only as pending M02 suggestions, with existing/current/duplicate values suppressed and no direct candidate-profile mutation.
+- A stable scoring-input hash over material job fields. An unchanged job/provider/model/scoring version returns `skipped` without an AI call; changed job content updates the same match row and can rescore.
+- Provider/malformed/semantic failures return an isolated `failed` result without creating a match or suggestion; missing job/profile identifiers remain explicit programming errors.
+- No deterministic qualification changes, scan orchestration, dashboard/filter UI, queue, notification, or M16+ functionality.
+
+Files created:
+
+- `app/models/job_matches.py`
+- `app/providers/ai/__init__.py`, `app/providers/ai/_http.py`, `app/providers/ai/base.py`, and `app/providers/ai/factory.py`
+- `app/providers/ai/openai.py`, `app/providers/ai/anthropic.py`, and `app/providers/ai/gemini.py`
+- `app/repositories/job_matches.py`
+- `app/schemas/ai.py`
+- `app/services/ai_matching.py`
+- `migrations/versions/20260809_0006_job_matches.py`
+- `tests/module/test_m15_ai_matching.py`
+
+Files changed:
+
+- `.env.example`
+- `README.md`
+- `app/config.py`
+- `app/models/__init__.py`, `app/models/jobs.py`, and `app/models/profiles.py`
+- `app/repositories/profiles.py` and `app/repositories/resumes.py`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- `.venv/bin/python -m pytest tests/module/test_m15_ai_matching.py` -> 4 passed
+- Persistence workflow -> all frozen match fields persisted, the score label was derived, the suggested resume belonged to the profile, and a role/skill suggestion remained pending without mutating profile skills
+- Prompt-safety workflow -> instruction-like job text remained inside explicit untrusted-data delimiters and the system prompt stated that it could not override instructions
+- Unchanged-input workflow -> the second scoring request returned `skipped` with no second provider call; changed description content rescored and updated the same match row
+- Malformed-output workflow -> invalid structured OpenAI text returned a controlled `failed` result and persisted no match or suggestion
+- Resume-boundary workflow -> an otherwise valid response suggesting an ID outside the profile failed without persistence
+- Adapter workflow -> deterministic local HTTP fixtures validated OpenAI, Anthropic, and Gemini structured request/response envelopes, credential headers, and one safe OpenAI HTTP 503 retry
+- Disabled/factory workflow -> zero-credential settings selected the disabled provider; configured OpenAI settings selected the adapter without exposing the key
+- Disposable SQLite `alembic upgrade head` through `20260809_0006`, followed by `alembic check` -> no new upgrade operations detected
+- `.venv/bin/python -m compileall -q app/config.py app/models app/schemas/ai.py app/providers/ai app/repositories app/services/ai_matching.py migrations/versions/20260809_0006_job_matches.py tests/module/test_m15_ai_matching.py` -> passed
+- `.venv/bin/python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M15 acceptance criteria pass. Configured adapters share one validated structured contract, successful matches and suggestions persist safely, malformed/invalid output cannot crash or partially write, and an unchanged job with the same provider/model/scoring version does not rescore.
+
+Issues discovered:
+
+- The first focused run found that a newly assigned integer experience value (`6`) reloaded from SQLite as a float (`6.0`), changing a JSON hash despite identical meaning. Hash inputs now canonicalize numeric experience values, and the unchanged-job regression test passes.
+- No M15 migration, adapter, persistence, prompt-boundary, malformed-output, resume-ownership, or rescore-skip failure remains.
+- No live AI request was made. Real matching requires the chosen provider's API key and model ID; absent configuration remains a safe disabled state rather than an application-start blocker.
+- AI inputs are deliberately bounded and may truncate very long descriptions/resume collections. Resume IDs and names remain present for the bounded resume set, while excessive text cannot grow a request without limit.
+- M15 exposes the provider and matching service boundaries but does not schedule them or render results; the common scan pipeline and dashboard remain later owning modules.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -1001,7 +1073,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M15 when explicitly requested.
+There are no genuine blockers to starting M16 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -1009,4 +1081,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M14. Do not begin M15 until explicitly requested.
+Stop after M15. Do not begin M16 until explicitly requested.

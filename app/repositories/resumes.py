@@ -19,6 +19,15 @@ class ResumeRepository:
         statement = select(Resume).where(Resume.id == resume_id, Resume.profile_id == profile_id)
         return self.session.scalar(statement)
 
+    def list_for_profile(self, profile_id: int, *, limit: int) -> list[Resume]:
+        statement = (
+            select(Resume)
+            .where(Resume.profile_id == profile_id)
+            .order_by(Resume.is_primary.desc(), Resume.id)
+            .limit(limit)
+        )
+        return list(self.session.scalars(statement).all())
+
     def clear_primary(self, profile_id: int) -> None:
         statement = (
             update(Resume)
