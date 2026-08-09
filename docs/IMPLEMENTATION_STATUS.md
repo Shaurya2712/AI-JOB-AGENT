@@ -4,7 +4,7 @@ Last updated: 2026-08-09
 
 ## Current State
 
-M01 Project Foundation through M08 Lever Connector are complete. M09 has not started.
+M01 Project Foundation through M09 Ashby Connector are complete. M10 has not started.
 
 The repository was fully inventoried before implementation. It initially contained only the frozen specification pack and a one-line root `README.md`; there was no prior application code, configuration, dependency manifest, migration, seed data, test suite, or runtime data to preserve.
 
@@ -94,6 +94,8 @@ M07 added no dependency; the connector reuses the architecture-approved runtime 
 
 M08 added no dependency; the Lever adapter reuses the M07 connector contract, bounded HTTP configuration, and collection runner.
 
+M09 added no dependency; the Ashby adapter reuses the same connector contract, HTTP settings, and isolated collection runner.
+
 ### Runtime
 
 - `fastapi` — web application and routing
@@ -140,7 +142,7 @@ Modules will be implemented strictly in the frozen order. Each module receives t
 | M06 ATS Detection | Detect supported ATS types and safely classify recognized/unsupported sources | Fixture URLs classify correctly; unsupported sources are recorded and skipped | Complete |
 | M07 Greenhouse Connector | Fetch and normalize open Greenhouse jobs behind the connector contract | Deterministic fixtures validate mapping, pagination/error isolation as applicable | Complete |
 | M08 Lever Connector | Fetch and normalize open Lever jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Complete |
-| M09 Ashby Connector | Fetch and normalize open Ashby jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Pending |
+| M09 Ashby Connector | Fetch and normalize open Ashby jobs behind the same contract | Deterministic fixtures validate mapping and isolated failures | Complete |
 | M10 Workday Connector | Pragmatic supported Workday collection behind the same contract | Deterministic fixtures validate the bounded implementation; unsupported variants fail safely | Pending |
 | M11 Generic Career Page Fallback | Bounded best-effort HTML job extraction | Time, size, type, URL/domain, and link limits hold; unreliable pages become unsupported | Pending |
 | M12 Normalization + Deduplication | Canonical job schema, URL/source/fingerprint identity, upsert | Rediscovery remains one row; changes update; `last_seen_at` refreshes | Pending |
@@ -612,6 +614,61 @@ Issues discovered:
 - The public Lever result does not provide a reliable original posting timestamp in its documented fields; M08 leaves that concern to later normalization rather than fabricating one.
 - Live Lever sites were not called. Deterministic local transports verified global/EU requests, pagination, and response parsing.
 
+## M09 Completion Record
+
+Completed: 2026-08-09
+
+Implemented:
+
+- An Ashby adapter implementing the unchanged M07 `JobConnector` and `ConnectorJob` boundary.
+- A public job-board request using the detected Ashby board name and `includeCompensation=false` to avoid collecting unused payload.
+- Mapping of Ashby titles, primary locations, plaintext descriptions, hosted job URLs, and stable source IDs derived from the hosted URL's terminal path segment.
+- Stable whitespace normalization while retaining description paragraph boundaries supplied by `descriptionPlain`.
+- Filtering of `isListed=false` direct-link-only posts while retaining listed postings returned by the public published-post feed.
+- Board identifier, hosted URL, derived source ID, JSON content type, response shape, field size, 5,000-job list, and response byte validation.
+- One bounded request per board because Ashby's public job-board API documents a complete published-post list and exposes no pagination parameters.
+- Reuse of the existing timeout, connection-pool/concurrency limits, disabled redirects, eight-MiB response limit, and one safe retry for transport/HTTP 5xx failures.
+- Per-company error isolation through the existing collection runner, selecting only active, connector-ready Ashby companies and retaining successes when another Ashby board fails.
+- No persistence, canonical normalization, deduplication, lifecycle handling, Workday adapter, or M10 behavior.
+
+Files created:
+
+- `app/providers/jobs/ashby.py`
+- `tests/module/test_m09_ashby.py`
+
+Files changed:
+
+- `app/providers/jobs/__init__.py`
+- `app/providers/jobs/factory.py`
+- `docs/IMPLEMENTATION_STATUS.md`
+
+Dependencies added:
+
+- Runtime: none
+- Test: none
+
+Focused verification evidence:
+
+- Python version: `3.12.13`
+- `python -m pytest tests/module/test_m09_ashby.py` -> 3 passed
+- Mapping workflow -> two listed fixture jobs mapped titles, locations, plaintext descriptions, hosted URLs, and URL-derived source IDs into the unchanged connector contract
+- Visibility workflow -> one `isListed=false` direct-link-only fixture was excluded
+- Request workflow -> board name, `includeCompensation=false`, JSON accept header, absence of authorization, and one safe HTTP 5xx retry were verified through deterministic mock transport
+- Validation workflow -> a path-like board identifier made no request, and a structurally incomplete Ashby response raised a controlled connector error
+- Isolation workflow -> one failed Ashby board and one successful board produced independent results; unsupported Ashby and Lever companies were not collected
+- `python -m compileall -q app/providers/jobs app/services/job_collection.py tests/module/test_m09_ashby.py` -> passed
+- `python -m pip check` -> no broken requirements
+- `git diff --check` -> passed
+
+Acceptance result: all M09 scope and acceptance requirements pass. Listed Ashby postings are fetched from the public structured feed, mapped into the same connector contract as Greenhouse and Lever, and isolated per company so one Ashby source failure cannot prevent other boards from succeeding.
+
+Issues discovered:
+
+- No M09 request, mapping, validation, visibility-filter, or source-isolation failure remains.
+- Ashby's documented public posting object does not expose a separate job ID field. M09 derives the required stable source identity from the hosted `jobUrl` path and rejects unusable URLs rather than inventing a mutable title-based identity.
+- Ashby documents one complete published-post response and no pagination parameters, so M09 performs one bounded request rather than inventing pagination.
+- Live Ashby boards were not called. Deterministic local transport verifies request and response behavior.
+
 ## Execution Rules
 
 For M01 through M22:
@@ -628,7 +685,7 @@ M23 begins only after M01–M22 focused tests pass. It may fix defects against f
 
 ## Blockers and Deferred External Configuration
 
-There are no genuine blockers to starting M09 when explicitly requested.
+There are no genuine blockers to starting M10 when explicitly requested.
 
 Live AI scoring, web company discovery, and Telegram delivery will eventually require user-supplied credentials or destination identifiers. These are not implementation blockers: the application must start and expose configured/not-configured states with zero credentials, provider behavior will be tested with deterministic fakes/fixtures, and known ATS sources must remain scannable when web search is unavailable.
 
@@ -636,4 +693,4 @@ The visual reference was inspected during M01 through a bounded direct fetch aft
 
 ## Next Action
 
-Stop after M08. Do not begin M09 until explicitly requested.
+Stop after M09. Do not begin M10 until explicitly requested.
