@@ -14,6 +14,7 @@ PORTABLE_SETTING_NAMES = (
     "search_language",
     "search_results_per_query",
     "search_max_queries_per_run",
+    "portal_search_max_queries_per_run",
     "search_concurrency",
     "search_timeout_seconds",
     "job_source_timeout_seconds",

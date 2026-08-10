@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     search_language: str = Field(default="en", min_length=2, max_length=10)
     search_results_per_query: int = Field(default=10, ge=1, le=20)
     search_max_queries_per_run: int = Field(default=30, ge=1, le=100)
+    portal_search_max_queries_per_run: int = Field(default=18, ge=3, le=60)
     search_concurrency: int = Field(default=3, ge=1, le=5)
     search_timeout_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
     job_source_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
