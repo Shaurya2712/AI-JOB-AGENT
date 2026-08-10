@@ -300,6 +300,42 @@ def test_jobs_filters_profile_state_location_and_frozen_fields(tmp_path: Path) -
         assert f'name="{field_name}"' in applied.text
 
 
+def test_jobs_filter_form_accepts_blank_optional_values(tmp_path: Path) -> None:
+    application = _app(tmp_path, "m16-blank-filter-values.db")
+
+    async def scenario() -> httpx.Response:
+        async with application.router.lifespan_context(application):
+            with application.state.session_factory() as session:
+                _seed_filter_scenarios(session)
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=application),
+                base_url="http://testserver",
+            ) as client:
+                return await client.get(
+                    "/jobs",
+                    params={
+                        "profile_id": "",
+                        "role": "",
+                        "min_score": "",
+                        "location_mode": "",
+                        "city": "",
+                        "source": "",
+                        "lifecycle": "open",
+                        "state": "",
+                        "minimum_salary": "600000",
+                        "posted_after": "",
+                        "discovered_after": "",
+                    },
+                )
+
+    response = asyncio.run(scenario())
+
+    assert response.status_code == 200
+    assert "Senior Mobile Engineer" in response.text
+    assert 'name="minimum_salary"' in response.text
+    assert 'value="600000"' in response.text
+
+
 def test_jobs_are_paginated_at_twenty_five_rows(tmp_path: Path) -> None:
     application = _app(tmp_path, "m16-pagination.db")
 

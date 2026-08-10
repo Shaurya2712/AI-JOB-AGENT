@@ -4,6 +4,15 @@ Last updated: 2026-08-10
 
 Status: V2-M01 through V2-M05 are complete, V2 final verification passed, and V2-EXT-M01 Tavily provider support is complete.
 
+## Post-Verification Defect Corrections
+
+### Jobs filter blank-value handling — 2026-08-10
+
+- Fixed the browser filter form returning HTTP 422 when optional numeric/date fields were submitted as empty strings alongside a real filter such as minimum salary.
+- Empty `profile_id`, `min_score`, `minimum_salary`, `posted_after`, and `discovered_after` query values now normalize to `None`; populated values retain the existing range/type validation.
+- Added a regression using the exact browser-style request with blank optional fields and `minimum_salary=600000`.
+- Focused verification: `tests/module/test_m16_dashboard_filters.py` — 4 passed; `tests/module/test_v2_04_ui_backup.py` — 4 passed; targeted compilation and `git diff --check` passed; the running application returned HTTP 200 for the previously failing URL.
+
 ## V2-EXT-M01 Tavily Provider Completion Record
 
 Completed: 2026-08-10

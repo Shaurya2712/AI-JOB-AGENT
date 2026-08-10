@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BeforeValidator
 from sqlalchemy.orm import Session
 
 from app.services.job_dashboard import JobDashboardService, JobFilters
@@ -21,21 +22,43 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
+def _empty_query_value_to_none(value: object) -> object | None:
+    return None if value == "" else value
+
+
 @router.get("", response_class=HTMLResponse, name="jobs")
 def jobs(
     request: Request,
-    profile_id: Annotated[int | None, Query(gt=0)] = None,
+    profile_id: Annotated[
+        int | None,
+        Query(gt=0),
+        BeforeValidator(_empty_query_value_to_none),
+    ] = None,
     role: Annotated[str, Query(max_length=120)] = "",
-    min_score: Annotated[int | None, Query(ge=0, le=100)] = None,
+    min_score: Annotated[
+        int | None,
+        Query(ge=0, le=100),
+        BeforeValidator(_empty_query_value_to_none),
+    ] = None,
     location_mode: Annotated[str, Query(max_length=30)] = "",
     city: Annotated[str, Query(max_length=160)] = "",
     source: Annotated[str, Query(max_length=40)] = "",
     lifecycle: Annotated[str, Query(max_length=20)] = "open",
     state: Annotated[str, Query(max_length=10)] = "",
-    minimum_salary: Annotated[Decimal | None, Query(ge=0)] = None,
+    minimum_salary: Annotated[
+        Decimal | None,
+        Query(ge=0),
+        BeforeValidator(_empty_query_value_to_none),
+    ] = None,
     remote: bool = False,
-    posted_after: date | None = None,
-    discovered_after: date | None = None,
+    posted_after: Annotated[
+        date | None,
+        BeforeValidator(_empty_query_value_to_none),
+    ] = None,
+    discovered_after: Annotated[
+        date | None,
+        BeforeValidator(_empty_query_value_to_none),
+    ] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
