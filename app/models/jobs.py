@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.models.companies import Company
     from app.models.job_matches import JobMatch
     from app.models.job_user_state import JobUserState
+    from app.models.portal_sources import PortalJobSource
 
 
 class Job(Base):
@@ -36,6 +37,10 @@ class Job(Base):
         CheckConstraint(
             "consecutive_missing_scans >= 0",
             name="ck_jobs_missing_scans_nonnegative",
+        ),
+        CheckConstraint(
+            "data_completeness IN ('partial', 'full')",
+            name="ck_jobs_data_completeness",
         ),
         UniqueConstraint(
             "company_id",
@@ -50,15 +55,17 @@ class Job(Base):
         ),
         Index("ix_jobs_company_lifecycle", "company_id", "lifecycle_status"),
         Index("ix_jobs_dedupe_signature", "dedupe_signature"),
+        Index("ix_jobs_cross_source_signature", "cross_source_signature"),
         Index("ix_jobs_description_hash", "description_hash"),
         Index("ix_jobs_last_seen_at", "last_seen_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int] = mapped_column(
-        ForeignKey("companies.id", ondelete="CASCADE"),
-        nullable=False,
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"),
+        nullable=True,
     )
+    company_name: Mapped[str] = mapped_column(String(160), default="")
     source_type: Mapped[str] = mapped_column(String(40))
     source_job_id: Mapped[str] = mapped_column(String(255))
     canonical_url: Mapped[str] = mapped_column(String(4000))
@@ -73,6 +80,11 @@ class Job(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     description_hash: Mapped[str] = mapped_column(String(64))
     dedupe_signature: Mapped[str] = mapped_column(String(64))
+    cross_source_signature: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    data_completeness: Mapped[str] = mapped_column(String(10), default="full")
     salary_min: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     salary_max: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     salary_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
@@ -95,7 +107,11 @@ class Job(Base):
         onupdate=utc_now,
     )
 
-    company: Mapped["Company"] = relationship(back_populates="jobs")
+    company: Mapped["Company | None"] = relationship(back_populates="jobs")
+    portal_sources: Mapped[list["PortalJobSource"]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+    )
     matches: Mapped[list["JobMatch"]] = relationship(
         back_populates="job",
         cascade="all, delete-orphan",

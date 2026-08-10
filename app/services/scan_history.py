@@ -15,6 +15,7 @@ from app.services.scans import (
 
 
 RECENT_RUN_LIMIT = 25
+RECENT_SOURCE_LIMIT = 75
 RECENT_FAILURE_LIMIT = 50
 MAX_RUN_SUMMARY_CHARS = 4_000
 MAX_SOURCE_ERROR_CHARS = 500
@@ -52,8 +53,24 @@ class SourceFailureView:
 
 
 @dataclass(frozen=True)
+class SourceResultView:
+    scan_run_id: int
+    company_name: str | None
+    source_type: str
+    source_label: str
+    finished_at: datetime
+    status: str
+    jobs_fetched: int
+    jobs_new: int
+    jobs_updated: int
+    retry_count: int
+    error_message: str | None
+
+
+@dataclass(frozen=True)
 class ScanHealthView:
     runs: tuple[ScanRunView, ...]
+    source_results: tuple[SourceResultView, ...]
     source_failures: tuple[SourceFailureView, ...]
     successful_runs: int
     unhealthy_runs: int
@@ -184,7 +201,34 @@ class ScanHistoryService:
                     .limit(RECENT_FAILURE_LIMIT)
                 )
             )
+            source_rows = tuple(
+                session.execute(
+                    select(ScanSourceResult, Company.name)
+                    .outerjoin(Company, Company.id == ScanSourceResult.company_id)
+                    .order_by(
+                        ScanSourceResult.finished_at.desc(),
+                        ScanSourceResult.id.desc(),
+                    )
+                    .limit(RECENT_SOURCE_LIMIT)
+                )
+            )
             run_views = tuple(_run_view(run) for run in runs)
+            source_results = tuple(
+                SourceResultView(
+                    scan_run_id=result.scan_run_id,
+                    company_name=company_name,
+                    source_type=result.source_type,
+                    source_label=_source_label(result.source_type),
+                    finished_at=result.finished_at,
+                    status=result.status,
+                    jobs_fetched=result.jobs_fetched,
+                    jobs_new=result.jobs_new,
+                    jobs_updated=result.jobs_updated,
+                    retry_count=result.retry_count,
+                    error_message=result.error_message,
+                )
+                for result, company_name in source_rows
+            )
             source_failures = tuple(
                 SourceFailureView(
                     scan_run_id=result.scan_run_id,
@@ -201,6 +245,7 @@ class ScanHistoryService:
             )
         return ScanHealthView(
             runs=run_views,
+            source_results=source_results,
             source_failures=source_failures,
             successful_runs=sum(run.status == "success" for run in run_views),
             unhealthy_runs=sum(
@@ -234,3 +279,10 @@ def _run_view(run: ScanRun) -> ScanRunView:
         errors_count=run.errors_count,
         summary=run.summary,
     )
+
+
+def _source_label(value: str) -> str:
+    normalized = value.strip().casefold()
+    if normalized == "linkedin":
+        return "LinkedIn"
+    return normalized.replace("_", " ").title()

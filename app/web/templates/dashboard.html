@@ -77,6 +77,7 @@
                   <td>
                     <span class="score-value">{{ item.overall_score }}%</span>
                     <span class="score-label">{{ item.recommendation_label }}</span>
+                    {% if item.is_preliminary_match %}<span class="table-subtext">Preliminary match · Partial job data</span>{% endif %}
                   </td>
                   <td>
                     <a class="job-title-link" href="/jobs/{{ item.id }}{% if item.profile_id %}?profile_id={{ item.profile_id }}{% endif %}">{{ item.title }}</a>
@@ -88,7 +89,11 @@
                     {% if item.remote_type %}<span class="table-subtext">{{ item.remote_type }}</span>{% endif %}
                   </td>
                   <td>{{ item.salary_text }}</td>
-                  <td><span class="badge badge--muted">{{ item.source_type }}</span></td>
+                  <td>
+                    <span class="badge badge--muted">{{ item.source_label }}</span>
+                    {% if item.data_completeness == "partial" %}<span class="table-subtext source-meta">Partial data</span>{% endif %}
+                    {% if item.alternate_source_labels %}<span class="table-subtext source-meta">Also: {{ item.alternate_source_labels|join(", ") }}</span>{% endif %}
+                  </td>
                   <td><span class="badge">{{ item.user_state }}</span></td>
                 </tr>
               {% endfor %}
@@ -132,10 +137,11 @@
                   <td>
                     <span class="score-value">{{ item.overall_score }}%</span>
                     <span class="table-subtext">{{ item.recommendation_label }}</span>
+                    {% if item.is_preliminary_match %}<span class="table-subtext">Preliminary match · Partial job data</span>{% endif %}
                   </td>
                   <td>
                     <a class="job-title-link" href="/jobs/{{ item.id }}{% if item.profile_id %}?profile_id={{ item.profile_id }}{% endif %}">{{ item.title }}</a>
-                    <span class="table-subtext">{{ item.source_type }}</span>
+                    <span class="table-subtext">{{ item.source_label }}{% if item.data_completeness == "partial" %} · Partial data{% endif %}</span>
                   </td>
                   <td>{{ item.company_name }}</td>
                   <td>

@@ -49,6 +49,7 @@ def _application(
     seed_path = tmp_path / f"{name}-seeds.json"
     seed_path.write_text("[]", encoding="utf-8")
     values: dict[str, object] = {
+        "_env_file": None,
         "environment": "test",
         "database_url": f"sqlite:///{(tmp_path / f'{name}.db').as_posix()}",
         "log_level": "WARNING",
@@ -423,7 +424,7 @@ def test_frozen_v1_end_to_end_workflow(tmp_path: Path, monkeypatch) -> None:
                     first_scan.jobs_fetched,
                     first_scan.jobs_new,
                     first_scan.jobs_scored,
-                ) == (5, 5, 6, 6, 5)
+                ) == (5, 8, 6, 6, 5)
                 assert search_provider.queries
                 assert {
                     source_type
@@ -555,7 +556,7 @@ def test_frozen_v1_end_to_end_workflow(tmp_path: Path, monkeypatch) -> None:
                     assert session.scalar(select(func.count(ScanRun.id))) == 6
                     assert session.scalar(
                         select(func.count(ScanSourceResult.id))
-                    ) == 30
+                    ) == 48
                 assert all(
                     scan.errors_count == 0
                     for scan in (fourth_scan, fifth_scan, sixth_scan)

@@ -16,6 +16,7 @@ from sqlalchemy import Engine
 from sqlalchemy.engine import make_url
 
 from app.config import Settings
+from app.db import run_migrations
 from app.services.runtime_settings import (
     PORTABLE_SETTING_NAME_SET,
     RuntimeSettingsService,
@@ -24,7 +25,9 @@ from app.services.runtime_settings import (
 
 BACKUP_FORMAT = "job-agent-backup"
 BACKUP_VERSION = 1
-SCHEMA_REVISION = "20260809_0010"
+SCHEMA_REVISION = "20260810_0011"
+V1_SCHEMA_REVISION = "20260809_0010"
+SUPPORTED_SCHEMA_REVISIONS = frozenset({V1_SCHEMA_REVISION, SCHEMA_REVISION})
 DATABASE_ARCHIVE_PATH = "database.sqlite3"
 MANIFEST_ARCHIVE_PATH = "manifest.json"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
@@ -42,6 +45,7 @@ REQUIRED_DATABASE_TABLES = frozenset(
         "jobs",
         "notification_destinations",
         "notification_log",
+        "portal_job_sources",
         "profile_suggestions",
         "resumes",
         "scan_runs",
@@ -49,6 +53,10 @@ REQUIRED_DATABASE_TABLES = frozenset(
         "settings",
     }
 )
+V1_REQUIRED_DATABASE_TABLES = REQUIRED_DATABASE_TABLES - {"portal_job_sources"}
+V1_PORTABLE_SETTING_NAME_SET = PORTABLE_SETTING_NAME_SET - {
+    "portal_search_max_queries_per_run"
+}
 
 
 class BackupError(ValueError):
@@ -269,7 +277,7 @@ class BackupService:
                 infos = archive.infolist()
                 _validate_archive_infos(infos)
                 manifest = _read_manifest(archive)
-                settings_values, resume_entries = _validate_manifest(
+                manifest_settings, resume_entries, schema_revision = _validate_manifest(
                     manifest,
                     self.settings,
                 )
@@ -290,7 +298,25 @@ class BackupService:
                     expected_size=database_manifest["size"],
                     expected_checksum=database_manifest["sha256"],
                 )
-                _validate_database(database_stage, settings_values)
+                required_tables = (
+                    REQUIRED_DATABASE_TABLES
+                    if schema_revision == SCHEMA_REVISION
+                    else V1_REQUIRED_DATABASE_TABLES
+                )
+                _validate_database(
+                    database_stage,
+                    manifest_settings,
+                    schema_revision=schema_revision,
+                    required_tables=required_tables,
+                )
+                settings_values = dict(manifest_settings)
+                if schema_revision == V1_SCHEMA_REVISION:
+                    settings_values = self._migrate_v1_database(
+                        database_stage,
+                        settings_values,
+                    )
+                    _validate_database(database_stage, settings_values)
+                _checkpoint_sqlite(database_stage)
 
                 with sqlite3.connect(database_stage) as connection:
                     database_resumes = {
@@ -318,6 +344,37 @@ class BackupService:
             raise
         except (BadZipFile, KeyError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise BackupError("Backup archive is invalid or unreadable") from error
+
+    def _migrate_v1_database(
+        self,
+        database_path: Path,
+        settings_values: dict[str, object],
+    ) -> dict[str, object]:
+        migrated_settings = dict(settings_values)
+        if "portal_search_max_queries_per_run" not in migrated_settings:
+            portal_query_cap = self.settings.portal_search_max_queries_per_run
+            migrated_settings["portal_search_max_queries_per_run"] = portal_query_cap
+            try:
+                with sqlite3.connect(database_path) as connection:
+                    connection.execute(
+                        "INSERT INTO settings (key, value_json) VALUES (?, ?)",
+                        (
+                            "portal_search_max_queries_per_run",
+                            json.dumps(portal_query_cap),
+                        ),
+                    )
+                    connection.commit()
+            except sqlite3.DatabaseError as error:
+                raise BackupError("V1 backup settings could not be migrated") from error
+
+        migration_values = self.settings.model_dump()
+        migration_values.update(migrated_settings)
+        migration_values["database_url"] = f"sqlite:///{database_path.as_posix()}"
+        try:
+            run_migrations(Settings.model_validate(migration_values))
+        except Exception as error:
+            raise BackupError("V1 backup database could not be migrated") from error
+        return migrated_settings
 
     def _restore_database_rollback(self, rollback_database: Path) -> None:
         self.engine.dispose()
@@ -385,11 +442,12 @@ def _read_manifest(archive: ZipFile) -> dict[str, object]:
 def _validate_manifest(
     manifest: dict[str, object],
     base_settings: Settings,
-) -> tuple[dict[str, object], tuple[_ResumeEntry, ...]]:
+) -> tuple[dict[str, object], tuple[_ResumeEntry, ...], str]:
+    schema_revision = manifest.get("schema_revision")
     if (
         manifest.get("format") != BACKUP_FORMAT
         or manifest.get("version") != BACKUP_VERSION
-        or manifest.get("schema_revision") != SCHEMA_REVISION
+        or schema_revision not in SUPPORTED_SCHEMA_REVISIONS
     ):
         raise BackupError("Backup format or schema version is unsupported")
     database = manifest.get("database")
@@ -404,7 +462,13 @@ def _validate_manifest(
         or not isinstance(resumes, list)
     ):
         raise BackupError("Backup manifest is invalid")
-    if set(settings_values) != PORTABLE_SETTING_NAME_SET:
+    setting_names = set(settings_values)
+    valid_setting_names = (
+        (PORTABLE_SETTING_NAME_SET,)
+        if schema_revision == SCHEMA_REVISION
+        else (PORTABLE_SETTING_NAME_SET, V1_PORTABLE_SETTING_NAME_SET)
+    )
+    if setting_names not in valid_setting_names:
         raise BackupError("Backup settings contain missing or unsupported keys")
     try:
         validation_values = base_settings.model_dump()
@@ -439,12 +503,15 @@ def _validate_manifest(
                 checksum=checksum,
             )
         )
-    return dict(settings_values), tuple(entries)
+    return dict(settings_values), tuple(entries), str(schema_revision)
 
 
 def _validate_database(
     database_path: Path,
     expected_settings: dict[str, object],
+    *,
+    schema_revision: str = SCHEMA_REVISION,
+    required_tables: frozenset[str] = REQUIRED_DATABASE_TABLES,
 ) -> None:
     try:
         with sqlite3.connect(database_path) as connection:
@@ -457,12 +524,12 @@ def _validate_database(
                     "SELECT name FROM sqlite_master WHERE type = 'table'"
                 )
             }
-            if not REQUIRED_DATABASE_TABLES.issubset(tables):
+            if not required_tables.issubset(tables):
                 raise BackupError("Backup database is missing required tables")
             revision = connection.execute(
                 "SELECT version_num FROM alembic_version"
             ).fetchone()
-            if revision != (SCHEMA_REVISION,):
+            if revision != (schema_revision,):
                 raise BackupError("Backup database schema version is unsupported")
             if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
                 raise BackupError("Backup database contains broken references")
@@ -528,6 +595,19 @@ def _sqlite_backup(source_path: Path, destination_path: Path) -> None:
 def _remove_sqlite_sidecars(database_path: Path) -> None:
     Path(f"{database_path}-wal").unlink(missing_ok=True)
     Path(f"{database_path}-shm").unlink(missing_ok=True)
+
+
+def _checkpoint_sqlite(database_path: Path) -> None:
+    try:
+        with sqlite3.connect(database_path) as connection:
+            checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            if checkpoint is not None and checkpoint[0] != 0:
+                raise BackupError("Backup database could not be checkpointed safely")
+    except BackupError:
+        raise
+    except sqlite3.DatabaseError as error:
+        raise BackupError("Backup database could not be checkpointed safely") from error
+    _remove_sqlite_sidecars(database_path)
 
 
 def _temporary_file(parent: Path, prefix: str) -> Path:

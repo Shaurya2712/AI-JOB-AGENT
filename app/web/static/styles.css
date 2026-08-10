@@ -835,6 +835,10 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
+.source-meta {
+  line-height: 1.35;
+}
+
 .queue-rank {
   color: var(--color-accent-dark);
   font-size: 1rem;
@@ -938,6 +942,42 @@ a:focus-visible {
   font-size: 0.75rem;
 }
 
+.source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin-top: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.source-links a {
+  color: var(--color-accent-dark);
+  font-weight: 700;
+  text-underline-offset: 0.2em;
+}
+
+.partial-data-notice {
+  margin-top: var(--space-8);
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-surface);
+}
+
+.partial-data-notice strong {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.partial-data-notice p {
+  max-width: 68ch;
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
 .profile-switcher {
   align-items: end;
   gap: var(--space-3);
@@ -969,6 +1009,11 @@ a:focus-visible {
   color: var(--color-text);
   font-size: 0.35em;
   letter-spacing: -0.025em;
+}
+
+.match-hero--partial .match-hero__score {
+  color: var(--color-warning);
+  font-size: clamp(2.25rem, 6vw, 4.5rem);
 }
 
 .reading-section > h2,

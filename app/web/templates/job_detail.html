@@ -5,12 +5,12 @@
 {% block content %}
   <article class="job-detail" aria-labelledby="page-title">
     <header class="job-detail__header">
-      <p class="eyebrow">Job / {{ detail.company.name }} / {{ detail.job.source_type }}</p>
+      <p class="eyebrow">Job / {{ detail.company_name }} / {{ detail.primary_source_label }}</p>
       <div class="job-detail__heading">
         <div>
           <h1 id="page-title">{{ detail.job.title }}</h1>
           <p class="page-intro">
-            {{ detail.company.name }} · {{ detail.job.location_text or "Location not listed" }}
+            {{ detail.company_name }} · {{ detail.job.location_text or "Location not listed" }}
             {% if detail.job.remote_type %} · {{ detail.job.remote_type }}{% endif %}
           </p>
         </div>
@@ -18,11 +18,27 @@
       </div>
       <div class="job-detail__context">
         <span class="badge">{{ detail.job.lifecycle_status.replace('_', ' ') }}</span>
-        <span>Source: {{ detail.job.source_type }}</span>
+        <span>Source: {{ detail.primary_source_label }}</span>
+        <span>Data: {{ detail.job.data_completeness|title }}</span>
         <span>Posted: {{ detail.posted_date }}</span>
         <span>Discovered: {{ detail.discovered_date }}</span>
       </div>
+      <div class="source-links" aria-label="Job source links">
+        <span>Original job: <a href="{{ detail.job.canonical_url }}" target="_blank" rel="noopener noreferrer">{{ detail.primary_source_label }}</a></span>
+        {% if detail.alternate_sources %}
+          <span>Also found on:
+            {% for source in detail.alternate_sources %}<a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.source_label }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+          </span>
+        {% endif %}
+      </div>
     </header>
+
+    {% if detail.job.data_completeness == "partial" %}
+      <aside class="partial-data-notice" aria-label="Partial job data notice">
+        <strong>Partial job data</strong>
+        <p>This job was discovered from search-result metadata. The complete job description may not yet be available, and missing requirements were not analyzed.</p>
+      </aside>
+    {% endif %}
 
     {% if detail.profiles|length > 1 %}
       <form class="profile-switcher" method="get" action="/jobs/{{ detail.job.id }}">
@@ -39,9 +55,10 @@
     {% endif %}
 
     {% if detail.match %}
-      <section class="match-hero" aria-labelledby="match-summary-title">
-        <p class="eyebrow">Match for {{ detail.profile.name }}</p>
+      <section class="match-hero{% if detail.job.data_completeness == 'partial' %} match-hero--partial{% endif %}" aria-labelledby="match-summary-title">
+        <p class="eyebrow">{% if detail.job.data_completeness == "partial" %}Preliminary match{% else %}Match{% endif %} for {{ detail.profile.name }}</p>
         <p class="match-hero__score">{{ detail.match.overall_score }}% <span>— {{ detail.match.recommendation_label }}</span></p>
+        {% if detail.job.data_completeness == "partial" %}<p class="muted-copy">Low-confidence score based only on available portal metadata.</p>{% endif %}
       </section>
 
       <section class="reading-section" aria-labelledby="match-summary-title">
@@ -102,8 +119,8 @@
     </section>
 
     <section class="reading-section" aria-labelledby="description-title">
-      <p class="section-number">05 Job Description</p>
-      <h2 id="description-title">Job description</h2>
+      <p class="section-number">05 {% if detail.job.data_completeness == "partial" %}Available Metadata{% else %}Job Description{% endif %}</p>
+      <h2 id="description-title">{% if detail.job.data_completeness == "partial" %}Search-result snippet{% else %}Job description{% endif %}</h2>
       <div class="job-description">{{ detail.job.description or "No description was provided." }}</div>
     </section>
 

@@ -4,6 +4,7 @@ from app.models.job_matches import JobMatch
 from app.models.job_user_state import JobUserState
 from app.models.jobs import Job
 from app.models.notifications import NotificationDestination, NotificationLog
+from app.models.portal_sources import PortalJobSource
 from app.models.profiles import CandidateProfile, ProfileSuggestion
 from app.models.resumes import Resume
 from app.models.runtime_settings import RuntimeSetting
@@ -18,6 +19,7 @@ __all__ = [
     "JobUserState",
     "NotificationDestination",
     "NotificationLog",
+    "PortalJobSource",
     "ProfileSuggestion",
     "Resume",
     "RuntimeSetting",

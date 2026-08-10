@@ -54,7 +54,7 @@ def test_startup_creates_and_migrates_database_idempotently(tmp_path: Path) -> N
     with sqlite3.connect(database_path) as connection:
         revisions = connection.execute("SELECT version_num FROM alembic_version").fetchall()
 
-    assert revisions == [("20260809_0001",)]
+    assert revisions == [("20260810_0011",)]
 
 
 def test_sqlite_uses_required_connection_pragmas(tmp_path: Path) -> None:

@@ -1,8 +1,8 @@
-# Job Agent V1
+# Job Agent
 
 Job Agent is a lightweight, local-first job-hunting assistant for one user. It discovers jobs, normalizes and deduplicates them, scores relevant roles with a configured AI provider, builds a daily application queue, tracks application state, sends optional Telegram notifications, and keeps scan health visible in a browser dashboard.
 
-M01 Project Foundation through M23 Final System Verification are complete.
+V1 M01–M23, V2 portal-discovery M01–M05, and the Tavily provider extension are complete.
 
 ## What the project includes
 
@@ -11,10 +11,13 @@ M01 Project Foundation through M23 Final System Verification are complete.
 - A persistent company registry populated from bundled seeds and optional web discovery.
 - Supported connectors for Greenhouse, Lever, Ashby, and pragmatic Workday variants.
 - Recognition of iCIMS and BambooHR, plus a bounded best-effort generic career-page fallback. Unsupported sources are recorded and skipped safely.
+- A separate, bounded search-provider discovery path for LinkedIn, Naukri, and Indeed job-detail results. It does not log in to or scrape portal pages.
 - Canonical job normalization, source/URL/content deduplication, and update-in-place behavior.
+- Alternate portal observations and conservative cross-source enrichment, with full ATS/company records remaining authoritative.
 - Job lifecycle states: `open`, `possibly_closed`, and `closed`.
 - Deterministic qualification before AI scoring.
 - Structured AI matching through OpenAI, Anthropic, or Gemini HTTP adapters. AI matching is disabled until explicitly configured.
+- Explicit preliminary/low-confidence scoring for sufficiently useful partial portal metadata; insufficient metadata remains Not Scored until a full description is available.
 - A browser dashboard with Apply Today, Strong Matches, New Jobs, Applied, and Scan Health views.
 - Filters for profile, role, score, location mode, city, source, lifecycle, user state, salary, remote work, posting date, and discovery date.
 - Job details with score breakdown, skills, concerns, explanation, original URL, suggested resume, and Save/Applied/Ignore actions.
@@ -23,7 +26,7 @@ M01 Project Foundation through M23 Final System Verification are complete.
 - Optional Telegram notifications for high matches, application activity, and scan summaries, with durable duplicate suppression.
 - Persistent scan/run health with source failures, counts, error details, and retry counts.
 - One portable backup archive containing the database, resume files, and non-secret portable settings.
-- A deterministic 21-step final verification workflow.
+- Deterministic final workflows for the complete V1 system and integrated V2 portal discovery.
 
 Job Agent does not auto-apply, fill forms, bypass access controls, run a local LLM, or provide authentication, multi-tenancy, billing, interview CRM, document generation, or SaaS infrastructure.
 
@@ -33,9 +36,9 @@ Job Agent does not auto-apply, fill forms, bypass access controls, run a local L
 Browser
   -> FastAPI + Jinja2 application
   -> manual Search Now or in-process APScheduler
-  -> profile-derived web discovery
-  -> ATS detection
-  -> Greenhouse / Lever / Ashby / Workday / generic collectors
+  -> profile-derived company discovery
+  -> ATS detection + Greenhouse / Lever / Ashby / Workday / generic collectors
+  -> separate bounded LinkedIn / Naukri / Indeed portal discovery
   -> normalize + deduplicate + lifecycle reconciliation
   -> deterministic qualification
   -> optional structured AI matching
@@ -52,7 +55,7 @@ The application is one Python process with SQLite. It does not require Redis, Ce
 - A modern browser
 - Internet access only when using live web search, ATS sources, AI matching, or Telegram
 - Optional provider credentials:
-  - Brave Search API key for automatic company discovery
+  - A Brave Search or Tavily API key for automatic company and portal discovery
   - An OpenAI, Anthropic, or Gemini API key and model name for scoring
   - A Telegram bot token and chat IDs for notifications
 
@@ -119,13 +122,13 @@ cp .env.example .env
 
 The copied defaults are safe to start. `.env` is ignored by Git and must remain private.
 
-If you do not have a Brave Search key, set this in `.env` to avoid a discovery-not-configured warning:
+If you do not have a Brave Search or Tavily key, set this in `.env` to avoid a discovery-not-configured warning:
 
 ```dotenv
 JOB_AGENT_SEARCH_PROVIDER=disabled
 ```
 
-Seeded and previously known companies still scan when discovery is disabled.
+Seeded and previously known companies still scan when discovery is disabled. LinkedIn, Naukri, and Indeed discovery requires the configured search provider, but never requires portal credentials.
 
 ### 5. Start the application
 
@@ -179,7 +182,7 @@ Expected response:
 | Page | URL | Purpose |
 |---|---|---|
 | Dashboard | <http://127.0.0.1:8000/> | Queue, matches, metrics, scheduler, Search Now, and latest scan |
-| Jobs | <http://127.0.0.1:8000/jobs> | Paginated job list and all V1 filters |
+| Jobs | <http://127.0.0.1:8000/jobs> | Paginated canonical jobs, source filters, completeness, matches, and state |
 | Profiles | <http://127.0.0.1:8000/profiles> | Profiles, resumes, and pending AI suggestions |
 | Companies | <http://127.0.0.1:8000/companies> | Seeded/discovered registry and source status |
 | Scans | <http://127.0.0.1:8000/scans> | Run history, counts, failures, and retry information |
@@ -211,12 +214,14 @@ Portable, non-secret settings may also be restored from a backup. Explicit desti
 
 | Variable | Default | Meaning |
 |---|---:|---|
-| `JOB_AGENT_SEARCH_PROVIDER` | `brave` | `brave` or `disabled` |
+| `JOB_AGENT_SEARCH_PROVIDER` | `brave` | `brave`, `tavily`, or `disabled` |
 | `JOB_AGENT_BRAVE_SEARCH_API_KEY` | empty | Brave Search credential |
-| `JOB_AGENT_SEARCH_COUNTRY` | `IN` | Two-character search country |
-| `JOB_AGENT_SEARCH_LANGUAGE` | `en` | Search language, 2–10 characters |
+| `JOB_AGENT_TAVILY_API_KEY` | empty | Tavily Search credential |
+| `JOB_AGENT_SEARCH_COUNTRY` | `IN` | Two-character country used by Brave Search |
+| `JOB_AGENT_SEARCH_LANGUAGE` | `en` | Search language used by Brave Search, 2–10 characters |
 | `JOB_AGENT_SEARCH_RESULTS_PER_QUERY` | `10` | Results per query; range 1–20 |
 | `JOB_AGENT_SEARCH_MAX_QUERIES_PER_RUN` | `30` | Queries per scan; range 1–100 |
+| `JOB_AGENT_PORTAL_SEARCH_MAX_QUERIES_PER_RUN` | `18` | Total LinkedIn/Naukri/Indeed queries per scan; range 3–60 |
 | `JOB_AGENT_SEARCH_CONCURRENCY` | `3` | Concurrent requests; range 1–5 |
 | `JOB_AGENT_SEARCH_TIMEOUT_SECONDS` | `10` | Request timeout; range 1–30 seconds |
 
@@ -227,12 +232,24 @@ JOB_AGENT_SEARCH_PROVIDER=brave
 JOB_AGENT_BRAVE_SEARCH_API_KEY=your_private_key
 ```
 
+Or select Tavily:
+
+```dotenv
+JOB_AGENT_SEARCH_PROVIDER=tavily
+JOB_AGENT_TAVILY_API_KEY=your_private_key
+```
+
+Only the selected provider is used; there is no automatic fallback between Brave and Tavily. Tavily uses basic general web search with answers and raw page content disabled. The existing profile-derived query text supplies job locations. The two-character country/language settings remain Brave-specific because Tavily's optional country boost uses a different country-name format; no country is hard-coded by the Tavily adapter.
+
 Or scan only bundled/already-known sources:
 
 ```dotenv
 JOB_AGENT_SEARCH_PROVIDER=disabled
 JOB_AGENT_BRAVE_SEARCH_API_KEY=
+JOB_AGENT_TAVILY_API_KEY=
 ```
+
+Both supported providers feed the same company web-discovery and LinkedIn, Naukri, and Indeed portal-discovery services. Tavily is a general web-search input to those services, not a direct integration with any portal. LinkedIn, Naukri, and Indeed remain blocked from company discovery and are accepted only by the strict portal-job path. Search pages, company/profile pages, help pages, and articles are rejected. Results are bounded by the portal query cap and existing per-query result limit. Tavily credit usage can be reviewed in Tavily's own dashboard; Job Agent does not poll usage or add extra search requests.
 
 ### Job sources
 
@@ -276,7 +293,7 @@ Equivalent settings work for `anthropic` and `gemini`. Obtain a currently suppor
 | 75–84 | Review |
 | Below 75 | Low Priority |
 
-Unchanged jobs are not rescored. Materially changed jobs are updated and rescored while user state is retained.
+Unchanged jobs are not rescored. Materially changed jobs are updated and rescored while user state is retained. Partial portal jobs are scored only when their title, employer, and bounded snippet provide enough evidence. Preliminary scores are clearly marked, receive the V2 confidence penalty/cap, and are replaced by normal full-data scoring when the same canonical job is enriched.
 
 ### Telegram
 
@@ -307,6 +324,7 @@ The token is never rendered or stored in normal application tables. Delivery rec
 - Multiple absences move it to `possibly_closed`.
 - The configured repeated-absence threshold closes it.
 - A reappearing job is reopened and its missing counter resets.
+- Search-result absence never closes a portal-only job; authoritative ATS/company scans retain the existing lifecycle rules.
 - Closed jobs are hidden by default but remain available through the lifecycle filter.
 - Saved, Applied, and Ignored state persists through rediscovery, updates, lifecycle changes, backup, and restart.
 - Applying may store a timestamp, selected profile-owned resume, and note. Job Agent never submits the application.
@@ -321,7 +339,7 @@ The token is never rendered or stored in normal application tables. Delivery rec
 | `data/seeds/companies.json` | Bundled company seeds |
 | `.env` | Local paths, credentials, and configuration |
 
-The database stores profiles and suggestions; resume metadata and extracted text; companies; normalized jobs and lifecycle counters; AI matches; Saved/Applied/Ignored state and application history; Telegram destinations and delivery logs; scan runs and source results; and portable non-secret settings.
+The database stores profiles and suggestions; resume metadata and extracted text; companies; canonical jobs and lifecycle counters; portal source observations and partial/full completeness; AI matches; Saved/Applied/Ignored state and application history; Telegram destinations and delivery logs; scan runs and source results; and portable non-secret settings.
 
 Use one running Job Agent process per database. Do not point multiple instances at the same SQLite file.
 
@@ -369,7 +387,7 @@ Create `/etc/systemd/system/job-agent.service`, replacing the user and paths:
 
 ```ini
 [Unit]
-Description=Job Agent V1
+Description=Job Agent
 After=network-online.target
 Wants=network-online.target
 
@@ -401,7 +419,7 @@ journalctl -u job-agent -f
 sudo systemctl restart job-agent
 ```
 
-V1 has no authentication. Keep it on `127.0.0.1` and do not expose it directly to the public internet. Remote access requires a separately secured boundary outside V1 scope.
+Job Agent has no authentication. Keep it on `127.0.0.1` and do not expose it directly to the public internet. Remote access requires a separately secured boundary outside the project scope.
 
 ## Migrations
 
@@ -412,7 +430,7 @@ alembic current
 alembic upgrade head
 ```
 
-The V1 head revision is `20260809_0010`. Back up useful data before updates or manual database maintenance.
+The V2 head revision is `20260810_0011`. Supported V1 `20260809_0010` backup archives are validated and migrated in staging during restore. Back up useful data before updates or manual database maintenance.
 
 ## Verification and tests
 
@@ -430,7 +448,15 @@ pytest tests/final/test_m23_end_to_end.py
 
 Expected result: `1 passed`. It uses isolated temporary files and local fixtures and does not contact live search, AI, or Telegram services.
 
-Run all M01–M22 focused module tests:
+Run the deterministic integrated V2 workflow:
+
+```bash
+pytest tests/final/test_v2_end_to_end.py
+```
+
+It covers ATS/portal canonicalization, all three portal sources, partial scoring, full enrichment, application state, Telegram idempotency, failure isolation, filters, scan history, and the shared manual/scheduled pipeline without contacting live providers.
+
+Run all V1 and V2 focused module tests:
 
 ```bash
 pytest tests/module
@@ -486,7 +512,7 @@ Then open <http://127.0.0.1:8001>.
 
 ### No jobs appear
 
-Confirm that an active profile exists, bundled companies appear, Search Now completed, and `/scans` shows source results. Configure Brave discovery or intentionally disable it. Public sources may change or block access; Job Agent logs and skips them without bypassing controls.
+Confirm that an active profile exists, bundled companies appear, Search Now completed, and `/scans` shows source results. Configure Brave or Tavily discovery, or intentionally disable it. Public sources may change or block access; Job Agent logs and skips them without bypassing controls.
 
 ### Jobs have no scores or queue entries
 
@@ -520,7 +546,7 @@ The service user needs repository and `.env` read access plus write access to da
 - Backups contain personal data even though secrets are excluded.
 - Job descriptions and web content are untrusted input.
 - The generic collector does not execute JavaScript, crawl without bounds, or bypass login, CAPTCHA, rate limits, or anti-bot systems.
-- V1 has no login. Bind locally and do not expose it directly to the public internet.
+- Job Agent has no login. Bind locally and do not expose it directly to the public internet.
 
 ## Repository layout
 
@@ -535,19 +561,22 @@ app/
   web/             Routes, Jinja2 templates, and local CSS
 data/seeds/         Bundled company seeds
 migrations/         Alembic revisions
-tests/module/       M01-M22 focused tests
-tests/final/        M23 end-to-end workflow
-docs/               Frozen specification and implementation status
+tests/module/       V1 and V2 focused tests
+tests/final/        V1 M23 and integrated V2 end-to-end workflows
+docs/v1/            Frozen V1 specification and implementation record
+docs/v2/            Frozen V2 delta specification and implementation status
 ```
 
 ## Project documentation
 
-- `docs/00_PRODUCT_SCOPE.md` — frozen product behavior and exclusions
-- `docs/01_TECHNICAL_ARCHITECTURE.md` — architecture and resource limits
-- `docs/02_DATA_MODEL.md` — persistence model
-- `docs/03_MODULES_AND_ACCEPTANCE.md` — M01–M23 acceptance criteria
-- `docs/04_TESTING_POLICY.md` — verification policy
-- `docs/05_UI_UX_REFERENCE_THEME.md` — visual direction
-- `docs/08_LOCAL_LINUX_RUNBOOK.md` — target runtime constraints
-- `docs/09_SECURITY_AND_EXTERNAL_ACCESS.md` — secrets and external access
-- `docs/IMPLEMENTATION_STATUS.md` — completed module evidence and decisions
+- `docs/v1/00_PRODUCT_SCOPE.md` — frozen V1 product behavior and exclusions
+- `docs/v1/01_TECHNICAL_ARCHITECTURE.md` — architecture and resource limits
+- `docs/v1/02_DATA_MODEL.md` — V1 persistence model
+- `docs/v1/03_MODULES_AND_ACCEPTANCE.md` — V1 M01–M23 acceptance criteria
+- `docs/v1/04_TESTING_POLICY.md` — verification policy
+- `docs/v1/05_UI_UX_REFERENCE_THEME.md` — visual direction
+- `docs/v1/08_LOCAL_LINUX_RUNBOOK.md` — target runtime constraints
+- `docs/v1/09_SECURITY_AND_EXTERNAL_ACCESS.md` — secrets and external access
+- `docs/v1/IMPLEMENTATION_STATUS.md` — completed V1 module evidence
+- `docs/v2/README_V2_SPEC_PACK.md` — V2 specification overview
+- `docs/v2/IMPLEMENTATION_STATUS.md` — V2 plan, module evidence, and final status

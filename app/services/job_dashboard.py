@@ -4,12 +4,13 @@ from decimal import Decimal
 from math import ceil
 
 from sqlalchemy import Select, and_, case, exists, func, or_, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from app.models.companies import Company
 from app.models.job_matches import JobMatch
 from app.models.job_user_state import JobUserState
 from app.models.jobs import Job
+from app.models.portal_sources import PortalJobSource
 from app.models.profiles import CandidateProfile
 
 
@@ -44,6 +45,10 @@ class JobListItem:
     remote_type: str | None
     salary_text: str
     source_type: str
+    source_label: str
+    alternate_source_labels: tuple[str, ...]
+    data_completeness: str
+    is_preliminary_match: bool
     posted_date: str
     discovered_date: str
     lifecycle_status: str
@@ -77,9 +82,15 @@ class ProfileFilterOption:
 
 
 @dataclass(frozen=True)
+class SourceFilterOption:
+    value: str
+    label: str
+
+
+@dataclass(frozen=True)
 class JobFilterOptions:
     profiles: tuple[ProfileFilterOption, ...]
-    sources: tuple[str, ...]
+    sources: tuple[SourceFilterOption, ...]
     location_modes: tuple[str, ...]
     cities: tuple[str, ...]
 
@@ -104,7 +115,9 @@ class DailyActionQueue:
 
 @dataclass(frozen=True)
 class _QueryParts:
-    statement: Select[tuple[Job, Company, JobMatch | None, JobUserState | None, str | None]]
+    statement: Select[
+        tuple[Job, Company | None, JobMatch | None, JobUserState | None, str | None]
+    ]
     match: type[JobMatch]
     user_state: type[JobUserState]
 
@@ -156,9 +169,14 @@ class JobDashboardService:
                 )
             )
         )
+        canonical_sources = set(self._distinct_strings(Job.source_type))
+        portal_sources = set(self._distinct_strings(PortalJobSource.portal_name))
         return JobFilterOptions(
             profiles=profiles,
-            sources=self._distinct_strings(Job.source_type),
+            sources=tuple(
+                SourceFilterOption(value=value, label=_source_label(value))
+                for value in sorted(canonical_sources | portal_sources)
+            ),
             location_modes=self._distinct_strings(Job.remote_type),
             cities=self._distinct_strings(Job.city),
         )
@@ -181,6 +199,7 @@ class JobDashboardService:
             )
             .order_by(
                 parts.match.overall_score.desc(),
+                case((Job.data_completeness == "full", 0), else_=1),
                 Job.discovered_at.desc(),
                 Job.id.desc(),
             )
@@ -247,7 +266,8 @@ class JobDashboardService:
         )
         statement = (
             select(Job, Company, match, user_state, CandidateProfile.name)
-            .join(Company, Company.id == Job.company_id)
+            .options(selectinload(Job.portal_sources))
+            .outerjoin(Company, Company.id == Job.company_id)
             .outerjoin(match, match.id == best_match_id)
             .outerjoin(
                 user_state,
@@ -276,7 +296,16 @@ class JobDashboardService:
             )
         if filters.source:
             statement = statement.where(
-                func.lower(Job.source_type) == filters.source.casefold()
+                or_(
+                    func.lower(Job.source_type) == filters.source.casefold(),
+                    exists(
+                        select(PortalJobSource.id).where(
+                            PortalJobSource.job_id == Job.id,
+                            func.lower(PortalJobSource.portal_name)
+                            == filters.source.casefold(),
+                        )
+                    ),
+                )
             )
         if filters.lifecycle != "all":
             statement = statement.where(Job.lifecycle_status == filters.lifecycle)
@@ -315,21 +344,40 @@ class JobDashboardService:
     @staticmethod
     def _item(
         job: Job,
-        company: Company,
+        company: Company | None,
         match: JobMatch | None,
         user_state: JobUserState | None,
         profile_name: str | None,
     ) -> JobListItem:
+        alternate_source_labels = tuple(
+            _source_label(source)
+            for source in sorted(
+                {
+                    observation.portal_name
+                    for observation in job.portal_sources
+                    if observation.portal_name.casefold()
+                    != job.source_type.casefold()
+                }
+            )
+        )
         return JobListItem(
             id=job.id,
             profile_id=match.profile_id if match is not None else None,
             title=job.title,
             canonical_url=job.canonical_url,
-            company_name=company.name,
+            company_name=job.company_name or (
+                company.name if company is not None else ""
+            ),
             location_text=job.location_text or "Not listed",
             remote_type=job.remote_type,
             salary_text=_salary_text(job),
             source_type=job.source_type,
+            source_label=_source_label(job.source_type),
+            alternate_source_labels=alternate_source_labels,
+            data_completeness=job.data_completeness,
+            is_preliminary_match=(
+                match is not None and job.data_completeness == "partial"
+            ),
             posted_date=_date_text(job.posted_at),
             discovered_date=_date_text(job.discovered_at),
             lifecycle_status=job.lifecycle_status,
@@ -362,3 +410,10 @@ def _amount(value: Decimal | None) -> str:
 
 def _date_text(value: datetime | None) -> str:
     return value.strftime("%d %b %Y") if value is not None else "Not listed"
+
+
+def _source_label(value: str) -> str:
+    normalized = value.strip().casefold()
+    if normalized == "linkedin":
+        return "LinkedIn"
+    return normalized.replace("_", " ").title()

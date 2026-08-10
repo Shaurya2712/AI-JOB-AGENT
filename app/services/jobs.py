@@ -8,7 +8,11 @@ from app.models.companies import Company
 from app.models.jobs import Job
 from app.providers.jobs.base import ConnectorJob
 from app.repositories.jobs import JobRepository
-from app.services.job_normalization import NormalizedConnectorJob, normalize_connector_job
+from app.services.job_normalization import (
+    NormalizedConnectorJob,
+    cross_source_signature,
+    normalize_connector_job,
+)
 
 
 class JobCompanyNotFoundError(LookupError):
@@ -21,6 +25,7 @@ class JobUpsertResult:
     created: bool
     updated: bool
     materially_changed: bool
+    upgraded_to_full: bool = False
 
 
 class JobUpsertService:
@@ -48,14 +53,15 @@ class JobUpsertService:
         *,
         seen_at: datetime | None = None,
     ) -> tuple[JobUpsertResult, ...]:
-        if self.session.get(Company, company_id) is None:
+        company = self.session.get(Company, company_id)
+        if company is None:
             raise JobCompanyNotFoundError(f"Company {company_id} was not found")
         observed_at = self._observed_at(seen_at)
 
         try:
             results = tuple(
                 self._upsert_normalized(
-                    company_id,
+                    company,
                     normalize_connector_job(company_id, connector_job),
                     observed_at,
                 )
@@ -71,21 +77,29 @@ class JobUpsertService:
 
     def _upsert_normalized(
         self,
-        company_id: int,
+        company: Company,
         normalized: NormalizedConnectorJob,
         observed_at: datetime,
     ) -> JobUpsertResult:
+        signature = cross_source_signature(
+            company.name,
+            normalized.title,
+            normalized.location_text,
+        )
         job = self.repository.find_match(
-            company_id,
+            company.id,
             source_type=normalized.source_type,
             source_job_id=normalized.source_job_id,
             canonical_url=normalized.canonical_url,
             dedupe_signature=normalized.dedupe_signature,
             allow_fallback=bool(normalized.description),
         )
+        if job is None and signature is not None:
+            job = self.repository.find_unique_partial_cross_source_match(signature)
         if job is None:
             job = Job(
-                company_id=company_id,
+                company_id=company.id,
+                company_name=company.name,
                 source_type=normalized.source_type,
                 source_job_id=normalized.source_job_id,
                 canonical_url=normalized.canonical_url,
@@ -95,6 +109,8 @@ class JobUpsertService:
                 description=normalized.description,
                 description_hash=normalized.description_hash,
                 dedupe_signature=normalized.dedupe_signature,
+                cross_source_signature=signature,
+                data_completeness="full",
                 discovered_at=observed_at,
                 last_seen_at=observed_at,
                 consecutive_missing_scans=0,
@@ -110,19 +126,28 @@ class JobUpsertService:
                 materially_changed=True,
             )
 
+        upgraded_to_full = job.data_completeness == "partial"
         identity_changed = (
-            job.source_type != normalized.source_type
+            job.company_id != company.id
+            or job.company_name != company.name
+            or job.source_type != normalized.source_type
             or job.source_job_id != normalized.source_job_id
             or job.canonical_url != normalized.canonical_url
+            or job.data_completeness != "full"
         )
         material_changed = (
             job.title != normalized.title
             or job.normalized_title != normalized.normalized_title
             or job.location_text != normalized.location_text
             or job.description_hash != normalized.description_hash
+            or job.cross_source_signature != signature
+            or job.data_completeness != "full"
         )
         updated = identity_changed or material_changed
 
+        job.company_id = company.id
+        job.company = company
+        job.company_name = company.name
         job.source_type = normalized.source_type
         job.source_job_id = normalized.source_job_id
         job.canonical_url = normalized.canonical_url
@@ -132,6 +157,8 @@ class JobUpsertService:
         job.description = normalized.description
         job.description_hash = normalized.description_hash
         job.dedupe_signature = normalized.dedupe_signature
+        job.cross_source_signature = signature
+        job.data_completeness = "full"
         job.last_seen_at = self._latest(job.last_seen_at, observed_at)
         job.updated_at = observed_at
         return JobUpsertResult(
@@ -139,6 +166,7 @@ class JobUpsertService:
             created=False,
             updated=updated,
             materially_changed=material_changed,
+            upgraded_to_full=upgraded_to_full,
         )
 
     @staticmethod

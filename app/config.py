@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     resume_storage_path: Path = DEFAULT_RESUME_STORAGE_PATH
     resume_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=25 * 1024 * 1024)
     company_seed_path: Path = DEFAULT_COMPANY_SEED_PATH
-    search_provider: Literal["brave", "disabled"] = "brave"
+    search_provider: Literal["brave", "tavily", "disabled"] = "brave"
     brave_search_api_key: SecretStr | None = None
+    tavily_api_key: SecretStr | None = None
     search_country: str = Field(default="IN", min_length=2, max_length=2)
     search_language: str = Field(default="en", min_length=2, max_length=10)
     search_results_per_query: int = Field(default=10, ge=1, le=20)

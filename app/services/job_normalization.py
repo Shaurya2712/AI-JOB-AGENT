@@ -12,6 +12,25 @@ _SOURCE_TYPE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 _TRACKING_QUERY_KEYS = frozenset(
     {"gh_src", "ref", "referrer", "source", "trackingid"}
 )
+_EMPLOYER_SUFFIXES = (
+    ("private", "limited"),
+    ("pvt", "ltd"),
+    ("incorporated",),
+    ("corporation",),
+    ("company",),
+    ("limited",),
+    ("corp",),
+    ("inc",),
+    ("llp",),
+    ("ltd",),
+    ("co",),
+)
+_LOCATION_ALIASES = {
+    "bangalore": "bengaluru",
+    "bangalore india": "bengaluru india",
+    "bangalore karnataka": "bengaluru karnataka",
+    "bangalore karnataka india": "bengaluru karnataka india",
+}
 
 
 class JobNormalizationError(ValueError):
@@ -122,6 +141,28 @@ def normalize_job_url(raw_url: str) -> str:
     return normalized
 
 
+def cross_source_signature(
+    company_name: str,
+    title: str,
+    location_text: str,
+) -> str | None:
+    employer_key = _employer_identity(company_name)
+    title_key = _identity_text(title)
+    raw_location_key = _identity_text(location_text)
+    location_key = _LOCATION_ALIASES.get(raw_location_key, raw_location_key)
+    if not employer_key or not title_key or not location_key:
+        return None
+    return _hash_text("\0".join((employer_key, title_key, location_key)))
+
+
+def normalize_display_text(value: str) -> str:
+    return _display_text(value)
+
+
+def normalize_identity_text(value: str) -> str:
+    return _identity_text(value)
+
+
 def _display_text(value: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", value).split())
 
@@ -138,6 +179,15 @@ def _description_text(value: str) -> str:
 def _identity_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value).casefold()
     return " ".join(re.sub(r"[^\w+#.]+", " ", normalized).split())
+
+
+def _employer_identity(value: str) -> str:
+    tokens = _identity_text(value).split()
+    for suffix in _EMPLOYER_SUFFIXES:
+        if tuple(tokens[-len(suffix) :]) == suffix:
+            tokens = tokens[: -len(suffix)]
+            break
+    return " ".join(tokens)
 
 
 def _identity_description(value: str) -> str:

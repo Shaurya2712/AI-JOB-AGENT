@@ -20,12 +20,12 @@ class AIMatchOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     overall_score: Score
-    role_score: Score
-    skills_score: Score
-    experience_score: Score
-    location_score: Score
-    freshness_score: Score
-    seniority_score: Score
+    role_score: Score | None
+    skills_score: Score | None
+    experience_score: Score | None
+    location_score: Score | None
+    freshness_score: Score | None
+    seniority_score: Score | None
     salary_score: Score | None
     matching_skills: Annotated[list[ShortText], Field(max_length=50)]
     missing_skills: Annotated[list[ShortText], Field(max_length=50)]

@@ -5,11 +5,13 @@ from app.providers.search.base import (
     WebSearchResult,
 )
 from app.providers.search.brave import BraveSearchProvider
+from app.providers.search.tavily import TavilySearchProvider
 
 __all__ = [
     "BraveSearchProvider",
     "SearchProviderError",
     "SearchProviderNotConfigured",
+    "TavilySearchProvider",
     "WebSearchProvider",
     "WebSearchResult",
 ]

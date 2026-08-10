@@ -56,7 +56,7 @@ def _app(
         values["telegram_bot_token"] = telegram_secret
     if openai_secret is not None:
         values["openai_api_key"] = openai_secret
-    return create_app(Settings(**values))
+    return create_app(Settings(_env_file=None, **values))
 
 
 def _seed_complete_state(application, label: str) -> None:

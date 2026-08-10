@@ -84,6 +84,10 @@ def test_upsert_normalizes_and_rediscovery_refreshes_one_row(tmp_path: Path) -> 
         assert persisted.id == first.job.id == second.job.id
         assert persisted.source_type == "greenhouse"
         assert persisted.source_job_id == "job-101"
+        assert persisted.company_id == company.id
+        assert persisted.company_name == "Acme"
+        assert persisted.data_completeness == "full"
+        assert persisted.cross_source_signature is not None
         assert persisted.canonical_url == (
             "https://jobs.acme.example/roles/job-101?a=1&b=2"
         )

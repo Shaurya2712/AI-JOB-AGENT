@@ -164,8 +164,13 @@ def test_real_zero_credential_pipeline_completes_without_external_calls(
     assert snapshot.status == "partial"
     assert snapshot.trigger_type == "manual"
     assert snapshot.companies_checked == 0
-    assert snapshot.sources_checked == 0
+    assert snapshot.sources_checked == 3
     assert snapshot.jobs_fetched == 0
-    assert snapshot.errors_count == 1
-    assert snapshot.errors == ("disabled search is not configured",)
-    assert "Checked 0 companies and 0 sources" in snapshot.summary
+    assert snapshot.errors_count == 4
+    assert snapshot.errors == (
+        "disabled search is not configured",
+        "linkedin: disabled search is not configured",
+        "naukri: disabled search is not configured",
+        "indeed: disabled search is not configured",
+    )
+    assert "Checked 0 companies and 3 sources" in snapshot.summary

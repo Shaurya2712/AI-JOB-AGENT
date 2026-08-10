@@ -26,6 +26,12 @@ from app.services.job_collection import ConnectorSourceResult, JobCollectionServ
 from app.services.job_lifecycle import JobLifecycleService
 from app.services.job_qualification import qualify_job
 from app.services.jobs import JobUpsertService
+from app.services.portal_discovery import (
+    PortalDiscoveryService,
+    PortalSourceDiscoveryResult,
+)
+from app.services.portal_jobs import PortalJobUpsertService
+from app.services.search_queries import PORTAL_NAMES
 from app.services.web_discovery import CompanyDiscoveryService
 
 
@@ -127,6 +133,7 @@ class _RunCounts:
     errors_count: int = 0
     errors: list[str] = field(default_factory=list)
     new_job_ids: set[int] = field(default_factory=set)
+    notification_job_ids: set[int] = field(default_factory=set)
     source_results: list[ScanSourceSnapshot] = field(default_factory=list)
 
     def add_error(self, message: str) -> None:
@@ -152,6 +159,7 @@ class ApplicationScanPipeline:
         await self._discover_companies(counts)
         self._classify_companies(counts)
         await self._collect_and_persist(counts)
+        await self._discover_and_persist_portal_jobs(counts)
         await self._score_jobs(counts)
         summary = (
             f"Checked {counts.companies_checked} companies and "
@@ -279,6 +287,11 @@ class ApplicationScanPipeline:
                 counts.new_job_ids.update(
                     result.job.id for result in upserts if result.created
                 )
+                counts.notification_job_ids.update(
+                    result.job.id
+                    for result in upserts
+                    if result.created or result.upgraded_to_full
+                )
                 JobLifecycleService(
                     session,
                     close_after_missing_scans=(
@@ -297,6 +310,7 @@ class ApplicationScanPipeline:
                 succeeded=True,
                 jobs_seen=len(source_result.jobs),
             )
+
             if not metadata_updated:
                 counts.add_error("Failed to update company scan metadata")
             counts.source_results.append(
@@ -329,6 +343,102 @@ class ApplicationScanPipeline:
                     retry_count=source_result.retry_count,
                 )
             )
+
+    async def _discover_and_persist_portal_jobs(
+        self,
+        counts: _RunCounts,
+    ) -> None:
+        stage_started_at = utc_now()
+        try:
+            with self.session_factory() as session:
+                profiles = ProfileRepository(session).list_active_profiles()
+            async with open_search_provider(self.settings) as provider:
+                result = await PortalDiscoveryService(
+                    provider,
+                    max_queries=self.settings.portal_search_max_queries_per_run,
+                    concurrency=self.settings.search_concurrency,
+                ).discover(profiles)
+        except Exception:
+            for portal in PORTAL_NAMES:
+                error_message = f"{portal}: portal discovery failed unexpectedly"
+                counts.sources_checked += 1
+                counts.add_error(error_message)
+                counts.source_results.append(
+                    ScanSourceSnapshot(
+                        company_id=None,
+                        source_type=portal,
+                        started_at=stage_started_at,
+                        finished_at=utc_now(),
+                        status="failed",
+                        error_message=error_message,
+                    )
+                )
+            return
+
+        for source_result in result.source_results:
+            self._persist_portal_source(
+                source_result,
+                counts,
+                started_at=stage_started_at,
+            )
+
+    def _persist_portal_source(
+        self,
+        source_result: PortalSourceDiscoveryResult,
+        counts: _RunCounts,
+        *,
+        started_at: datetime,
+    ) -> None:
+        counts.sources_checked += 1
+        counts.jobs_fetched += len(source_result.candidates)
+        errors = [f"{source_result.portal}: {error}" for error in source_result.errors]
+        if errors:
+            counts.add_error("; ".join(errors))
+
+        source_jobs_new = 0
+        source_jobs_updated = 0
+        try:
+            with self.session_factory() as session:
+                upserts = PortalJobUpsertService(session).upsert_many(
+                    list(source_result.candidates),
+                    seen_at=utc_now(),
+                )
+            source_jobs_new = sum(result.job_created for result in upserts)
+            source_jobs_updated = sum(
+                not result.job_created and result.materially_changed
+                for result in upserts
+            )
+            counts.jobs_new += source_jobs_new
+            counts.jobs_updated += source_jobs_updated
+            created_ids = {
+                result.job.id for result in upserts if result.job_created
+            }
+            changed_ids = {
+                result.job.id for result in upserts if result.materially_changed
+            }
+            counts.new_job_ids.update(created_ids)
+            counts.notification_job_ids.update(created_ids | changed_ids)
+        except Exception:
+            persistence_error = (
+                f"{source_result.portal}: failed to persist discovered portal jobs"
+            )
+            counts.add_error(persistence_error)
+            errors.append(persistence_error)
+
+        failed = bool(errors or source_result.searches_failed)
+        counts.source_results.append(
+            ScanSourceSnapshot(
+                company_id=None,
+                source_type=source_result.portal,
+                started_at=started_at,
+                finished_at=utc_now(),
+                status="failed" if failed else "success",
+                jobs_fetched=len(source_result.candidates),
+                jobs_new=source_jobs_new,
+                jobs_updated=source_jobs_updated,
+                error_message="; ".join(errors)[:500] if errors else None,
+            )
+        )
 
     def _update_company_scan(
         self,
@@ -395,7 +505,11 @@ class ApplicationScanPipeline:
                                 if (
                                     self.recommendation_notifier is not None
                                     and result.match is not None
-                                    and job.id in counts.new_job_ids
+                                    and job.id
+                                    in (
+                                        counts.new_job_ids
+                                        | counts.notification_job_ids
+                                    )
                                     and result.match.overall_score
                                     >= self.settings.telegram_match_threshold
                                 ):

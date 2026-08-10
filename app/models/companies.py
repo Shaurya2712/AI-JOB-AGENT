@@ -31,5 +31,5 @@ class Company(Base):
 
     jobs: Mapped[list["Job"]] = relationship(
         back_populates="company",
-        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

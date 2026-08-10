@@ -2,7 +2,62 @@
 
 Last updated: 2026-08-10
 
-Status: V2-M01 Portal Search Boundary is complete. V2-M02 has not started.
+Status: V2-M01 through V2-M05 are complete, V2 final verification passed, and V2-EXT-M01 Tavily provider support is complete.
+
+## V2-EXT-M01 Tavily Provider Completion Record
+
+Completed: 2026-08-10
+
+Status: **PASS**
+
+Implemented scope:
+
+- Added `TavilySearchProvider` as a second implementation of the unchanged `WebSearchProvider` contract. Company and portal discovery continue to consume only normalized `WebSearchResult(title, url, description)` values.
+- Added `JOB_AGENT_SEARCH_PROVIDER=tavily` and secret `JOB_AGENT_TAVILY_API_KEY` through the existing settings and provider factory. Brave and disabled selection remain unchanged; there is no cross-provider fallback.
+- Tavily sends one bounded `POST https://api.tavily.com/search` request with Bearer authentication and `query`, `search_depth=basic`, `topic=general`, `include_answer=false`, `include_raw_content=false`, `max_results` from the existing setting, and `auto_parameters=false`.
+- Tavily `results[].title`, `results[].url`, and `results[].content` map to the existing result title, URL, and description. Provider-specific score, raw content, answer, image, and other metadata are ignored.
+- Existing 400-character/50-word query validation, one MiB response protection, configured HTTP timeout/client bounds, consumer concurrency, query caps, and one safe transport/5xx retry convention are preserved.
+- Missing keys report the provider as unconfigured without blocking application startup. HTTP 4xx (including 401/429), exhausted 5xx/timeout/transport errors, oversized responses, malformed JSON, and malformed result structures become existing `SearchProviderError` variants and remain isolated by discovery services.
+- Portal `site:` queries and strict LinkedIn/Naukri/Indeed recognizers are unchanged. The company blocked-host list remains unchanged.
+- Tavily's optional country field was intentionally omitted: the application setting is an ISO-2 value used by Brave, while Tavily expects a country name. Profile/query generation remains the provider-neutral location authority; no India value or conversion table was hard-coded.
+
+Files created:
+
+- `app/providers/search/tavily.py`
+- `tests/module/test_v2_ext_m01_tavily.py`
+
+Files changed:
+
+- `app/config.py`
+- `app/providers/search/factory.py`
+- `app/providers/search/__init__.py`
+- `.env.example`
+- `README.md`
+- `docs/v2/IMPLEMENTATION_STATUS.md`
+
+Dependencies and persistence:
+
+- Dependencies added: none; the adapter uses existing `httpx` and Pydantic dependencies.
+- Schema migrations/data-model changes: none.
+- New services, pipelines, schedulers, browser automation, portal scraping, or provider fallback: none.
+
+Focused verification:
+
+- `.venv/bin/pytest -q tests/module/test_v2_ext_m01_tavily.py` — 14 passed.
+- `.venv/bin/pytest -q tests/module/test_v2_ext_m01_tavily.py tests/module/test_m05_discovery.py tests/module/test_v2_01_portal_discovery.py` — 49 passed.
+- `.venv/bin/python -m compileall -q app/config.py app/providers/search tests/module/test_v2_ext_m01_tavily.py` — passed.
+- `git diff --check` — passed.
+- The first run exposed one invalid test fixture path for company seeds; it was corrected to use the valid bundled seed. No production defect was involved.
+
+Acceptance result:
+
+- PASS — Tavily selection, missing-key startup, request/auth/body/credit controls, bounded mapping, empty and malformed responses, 4xx handling, timeout retry, persistent 5xx retry, provider-neutral company discovery, and provider-neutral portal discovery are covered.
+- PASS — Brave remains selectable through the same factory and its existing request regression remains in the focused regression set.
+
+Issues/blockers:
+
+- Live Tavily yield was not exercised because no user credential is required or available for deterministic verification. This is not a module blocker.
+- No blocker exists before any separately approved extension. Stop after V2-EXT-M01.
 
 ## Scope and Repository State
 
@@ -18,7 +73,7 @@ All V1 documents, the complete V1 implementation record, all V2 specification fi
 
 - `ProfileSearchQueryGenerator` reads every active profile and combines target roles, role synonyms, preferred locations, and Remote work mode. It deduplicates deterministically and enforces one configured query cap.
 - `WebSearchProvider` is already the correct reusable network boundary. It exposes `is_configured` and asynchronous `search(query)` returning bounded `WebSearchResult(title, url, description)` records.
-- The only current implementation is `BraveSearchProvider`. It uses bounded results, timeouts, response size, concurrency, and one safe transport/5xx retry. It requires only the existing Brave API key.
+- At initial V2 planning time, the only implementation was `BraveSearchProvider`. It uses bounded results, timeouts, response size, concurrency, and one safe transport/5xx retry. V2-EXT-M01 later added the interchangeable Tavily implementation recorded above.
 - `CompanyDiscoveryService` owns company-career interpretation and persistence. Search failures are isolated and the existing company registry remains available to downstream ATS scans.
 - `SearchDiscoveryParser` deliberately blocks LinkedIn, Naukri, and Indeed, along with other aggregators/social hosts, before creating a `Company`. This behavior is correct for V2 and must remain unchanged.
 
@@ -226,12 +281,12 @@ No new dependency is proposed.
 | Module | Scope | Focused acceptance intent | Status |
 |---|---|---|---|
 | V2-M01 Portal Search Boundary | Shared profile targets, bounded portal queries, three strict recognizers, per-portal failure results | All portals generate/recognize valid job results; irrelevant pages are rejected; company blocked hosts remain unchanged; no persistence/browser/login | Complete |
-| V2-M02 Canonical Portal Persistence | Migration, partial/full marker, nullable unavailable match components, portal observations, deterministic portal/portal and portal/full enrichment | One canonical row when uniquely equivalent; full source wins; ambiguity does not merge; state is preserved; V1 backup can be staged/migrated | Pending |
-| V2-M03 Shared Scan and Preliminary Matching | Existing pipeline, source counts/logs, portal isolation, deterministic evidence gate, constrained preliminary scoring, and normal full-data rescore | Useful partial metadata may be scored/queued with an explicit low-confidence label; insufficient metadata is Not Scored; full enrichment replaces the preliminary score on the same identity | Pending |
-| V2-M04 UI, Filters, and Idempotency | Existing Jobs/detail/dashboard, portal-aware source filter, partial warning, queue ordering, alternate links, notification and backup regressions | Portal filters work; partial scores and notifications are unmistakable; equivalent full results rank higher; application and Telegram identity remain canonical | Pending |
-| V2-M05 Final V1 + V2 Verification | Full historical V1 suite plus realistic V2 end-to-end workflow | All V1 tests and the final V2 fixture workflow pass; no live portal dependency in default tests | Final Verification |
+| V2-M02 Canonical Portal Persistence | Migration, partial/full marker, nullable unavailable match components, portal observations, deterministic portal/portal and portal/full enrichment | One canonical row when uniquely equivalent; full source wins; ambiguity does not merge; state is preserved; V1 backup can be staged/migrated | Complete |
+| V2-M03 Shared Scan and Preliminary Matching | Existing pipeline, source counts/logs, portal isolation, deterministic evidence gate, constrained preliminary scoring, and normal full-data rescore | Useful partial metadata may be scored/queued with an explicit low-confidence label; insufficient metadata is Not Scored; full enrichment replaces the preliminary score on the same identity | Complete |
+| V2-M04 UI, Filters, and Idempotency | Existing Jobs/detail/dashboard, portal-aware source filter, partial warning, queue ordering, alternate links, notification and backup regressions | Portal filters work; partial scores and notifications are unmistakable; equivalent full results rank higher; application and Telegram identity remain canonical | Complete |
+| V2-M05 Final V1 + V2 Verification | Full historical V1 suite plus realistic V2 end-to-end workflow | All V1 tests and the final V2 fixture workflow pass; no live portal dependency in default tests | Complete |
 
-V2-M01 focused checks pass. Do not begin V2-M02 without explicit user instruction, and do not run the complete regression suite before V2-M05.
+V2-M01 through V2-M05 and the complete deterministic V1 + V2 regression/final workflow pass.
 
 ## V2-M01 Completion Record
 
@@ -291,12 +346,309 @@ Issues/deviations/blockers:
 - Live provider yield was intentionally not tested because deterministic fixtures are the acceptance evidence and live indexing is variable.
 - The complete project suite was intentionally not run under the V2 testing policy.
 
+## V2-M02 Completion Record
+
+Completed: 2026-08-10
+
+Schema and migration:
+
+- Added one reversible Alembic revision, `20260810_0011`, after the completed V1 head.
+- `jobs.company_id` is nullable with `ON DELETE SET NULL`; `company_name` is required and existing V1 rows are backfilled from `companies.name`.
+- Added required `data_completeness` constrained to `partial | full`; every existing V1 job is backfilled to `full`.
+- Added nullable indexed `cross_source_signature`, with deterministic backfill where employer, title, and location are all usable.
+- Added `portal_job_sources` as a bounded child observation table with portal/data-completeness checks, job cascade ownership, identity and URL uniqueness, and job/last-seen indexes.
+- Prepared the already-approved match schema for M03 by allowing unavailable component scores to be null and permitting the longer `Partial / Low Confidence` label. AI prompts, scoring, queueing, and notifications were not changed.
+- Downgrade removes unrepresentable portal-only rows/preliminary matches before restoring the exact V1 ownership and match constraints; upgrade/downgrade/upgrade is verified.
+
+Persistence and canonicalization:
+
+- V1 `JobUpsertService` still applies company-scoped source identity, canonical URL, and description-fingerprint precedence first. It now also stores the registry company name, full completeness, and cross-source signature.
+- Added `PortalJobUpsertService` to persist M01 candidates without fabricated company rows. Portal-only jobs are canonical `jobs` rows with `company_id=NULL`, a stored display company, partial completeness, bounded snippet content, original URL, source identity, and normal discovered/last-seen timestamps.
+- Portal rediscovery resolves by exact portal source ID or exact normalized portal URL, updates one observation and `last_seen_at`, and never applies absence/closure inference.
+- Cross-source signatures use normalized employer, title, and location. Employer normalization removes only a small terminal legal-suffix set; location normalization adds only tested Bangalore/Bengaluru aliases.
+- Cross-source merge occurs only when the exact signature resolves to one canonical candidate. Zero matches create a job; multiple matches are ambiguous and create a separate job rather than merging.
+- ATS-first then portal attaches an observation to the existing ID without overwriting full source identity, URL, description, or completeness.
+- Portal-first then ATS upgrades the same job ID in place with the real company, full ATS identity/URL/description, and `full` completeness while retaining portal observations.
+- Enrichment does not delete or recreate the canonical row, so Saved/Applied/Ignored state, `applied_at`, resume, note, persisted match row, notification log/event key, and original `discovered_at` remain attached.
+
+Backup compatibility:
+
+- Current backups now identify schema `20260810_0011` and require the portal observation table.
+- Restore accepts current V2 archives plus supported `20260809_0010` V1 archives, including archives created before the M01 portal query setting existed.
+- A V1 archive is validated first, upgraded only in staging, supplied the safe current portal-query default when missing, revalidated at the V2 head, and SQLite WAL-checkpointed before atomic installation.
+- Migration or validation failure remains inside staging and preserves the active database/rollback path.
+
+Files created:
+
+- `app/models/portal_sources.py`
+- `app/services/portal_jobs.py`
+- `migrations/versions/20260810_0011_v2_portal_discovery.py`
+- `tests/module/test_v2_02_portal_dedup.py`
+
+Files changed:
+
+- `app/models/__init__.py`
+- `app/models/companies.py`
+- `app/models/job_matches.py`
+- `app/models/jobs.py`
+- `app/repositories/jobs.py`
+- `app/services/backups.py`
+- `app/services/job_normalization.py`
+- `app/services/jobs.py`
+- `tests/module/test_m12_job_normalization.py`
+- `tests/module/test_m22_backup_restore.py`
+- `docs/v2/IMPLEMENTATION_STATUS.md`
+
+Dependencies added: none.
+
+Focused verification:
+
+- `.venv/bin/pytest -q tests/module/test_v2_02_portal_dedup.py` — 10 passed.
+- `.venv/bin/pytest -q tests/module/test_m12_job_normalization.py tests/module/test_m13_job_lifecycle.py tests/module/test_m18_job_detail_state.py tests/module/test_m22_backup_restore.py` — 11 passed.
+- Final scoped combined run of V2-M02 plus those four V1 regression files — 21 passed.
+- Current-backup round trip and safe-invalid-restore regression file after WAL checkpoint hardening — 3 passed.
+- Fresh Alembic upgrade and `alembic check` against ORM metadata — passed with no new operations detected.
+- Targeted Python compilation and `git diff --check` — passed.
+
+Acceptance result:
+
+- PASS — fresh schema creation, V1 upgrade/backfill, and upgrade/downgrade/upgrade.
+- PASS — portal-only canonical jobs require no company-registry row.
+- PASS — portal rediscovery retains one job and one observation.
+- PASS — unique LinkedIn/Indeed equivalence retains one job with two observations.
+- PASS — ATS-first retains full canonical data; portal-first upgrades the same ID to full.
+- PASS — Saved and Applied state, timestamps, resume, note, match history, notification identity, and original discovery time survive enrichment.
+- PASS — ambiguous exact signatures do not merge.
+- PASS — V1 deduplication and lifecycle behavior remain regression-safe.
+- PASS — portal identity and URL uniqueness are enforced by SQLite.
+- PASS — supported V1 backups are migrated safely in staging and current V2 backups still round-trip.
+- PASS — no AI call, scan/scheduler integration, dashboard/filter change, Telegram change, browser automation, or new dependency was added.
+
+Issues/deviations/blockers:
+
+- No deviation from the approved V2-M02 architecture and no blocker before V2-M03.
+- A directly affected backup test was made independent of the developer's local `.env`; production configuration precedence was not changed.
+- The complete project suite was intentionally not run under the V2 testing policy.
+
+## V2-M03 Completion Record
+
+Completed: 2026-08-10
+
+Shared scan and source logging:
+
+- Inserted portal discovery after the existing ATS/company collection stage and before the existing qualification/matching stage. This lets authoritative full ATS data win before equivalent portal observations are attached while keeping portal-only jobs eligible for matching in the same run.
+- Manual Search Now and scheduled scans continue to use one `ApplicationScanPipeline`, `ScanController`, overlap guard, scheduler, run history, and completion summary.
+- Reused `WebSearchProvider`, the approved total portal-query cap, active profiles, existing search concurrency, and the completed M01 discovery service.
+- LinkedIn, Naukri, and Indeed are each persisted through the completed M02 service and emitted as independent `ScanSourceSnapshot` records with nullable company, timestamps, success/failure, fetched/new/updated counts, bounded error text, and the existing retry field default.
+- A failed portal is recorded once at run-error level and as its own failed source while candidates from other portals continue to persist. A provider/factory-level failure emits three bounded failed source snapshots rather than crashing the scan.
+- Portal discovery never invokes lifecycle absence reconciliation. Rediscovery still refreshes `last_seen_at` through M02 persistence, while ranked-search absence leaves missing counts and lifecycle status unchanged. Existing authoritative ATS lifecycle reconciliation is unchanged.
+
+Matching and AI-cost controls:
+
+- Kept one `AIMatchingService`, one provider abstraction, and one `job_matches` row per canonical job/profile.
+- Full jobs retain the exact V1 scoring version and content-hash shape, including unchanged-job skip behavior and strict non-salary component validation.
+- Partial jobs use scoring version `job-match-v1-partial` and pass a deterministic gate requiring a nonempty title, nonempty stored employer, and at least 80 normalized non-boilerplate snippet characters. Insufficient jobs remain Not Scored, make no AI call, and cannot enter the scored queue.
+- The partial prompt explicitly identifies search-result metadata as incomplete and prohibits invented salary, experience, skills, seniority, employment conditions, and responsibilities. Unavailable experience, freshness, salary, location, seniority, and skills components are forced to null when their supporting evidence is absent; skill lists are restricted to terms explicitly present in the snippet; partial profile suggestions are discarded.
+- Preliminary overall scores receive the approved deterministic five-point penalty and 89 maximum, use the explicit `Partial / Low Confidence` label, and persist on the existing match row.
+- Unchanged partial metadata skips rescoring through its partial content hash. Material portal metadata changes are eligible for rescoring. A partial-to-full upgrade changes the scoring version and always runs the authoritative V1 full-data flow on the same match row.
+
+Queue and Telegram behavior:
+
+- The existing daily queue now supports canonical jobs without a company-registry row, still excludes Applied/Ignored jobs, and orders full before partial when stored scores tie. There is no portal-specific queue.
+- Recommendation lookup now supports the stored canonical `Job.company_name` without fabricating a Company. Partial recommendations use the existing threshold and original portal URL but start with `Preliminary Match — Partial Data / Low Confidence` and state that only search-result metadata was analyzed.
+- The high-match event key remains `high-match:{job_id}:{profile_id}`. A sent partial recommendation suppresses an enrichment duplicate. If partial data never produced a qualifying delivery, a later qualifying full score can create the first recommendation.
+- ATS upsert results now expose only the minimal transient `upgraded_to_full` flag needed by the shared pipeline to make a full enrichment eligible for that first recommendation; no schema or new notification type was added.
+
+Files created:
+
+- `tests/module/test_v2_03_portal_integration.py`
+
+Files changed:
+
+- `app/schemas/ai.py`
+- `app/services/ai_matching.py`
+- `app/services/job_dashboard.py`
+- `app/services/jobs.py`
+- `app/services/notifications.py`
+- `app/services/scans.py`
+- `tests/module/test_m19_scheduler_scan.py`
+- `docs/v2/IMPLEMENTATION_STATUS.md`
+
+Dependencies added: none.
+
+Focused verification:
+
+- `.venv/bin/pytest -q tests/module/test_v2_03_portal_integration.py` — 8 passed.
+- `.venv/bin/pytest -q tests/module/test_v2_01_portal_discovery.py tests/module/test_v2_02_portal_dedup.py tests/module/test_v2_03_portal_integration.py tests/module/test_m13_job_lifecycle.py tests/module/test_m14_job_qualification.py tests/module/test_m15_ai_matching.py tests/module/test_m16_dashboard_filters.py tests/module/test_m17_daily_action_queue.py tests/module/test_m19_scheduler_scan.py tests/module/test_m20_telegram.py tests/module/test_m21_scan_history.py` — 76 passed.
+- Targeted Python compilation and `git diff --check` — passed.
+
+Acceptance result:
+
+- PASS — the existing shared manual/scheduled pipeline runs company discovery, ATS collection, portal discovery/persistence, matching, notifications, and shared logging in one ordered flow under the existing overlap guard.
+- PASS — all three portal families are independently logged and one portal/search failure does not stop other portals, ATS persistence, or later matching.
+- PASS — full jobs retain V1 qualification, structured matching, persistence, rescore, queue, and recommendation behavior without unnecessary rescoring.
+- PASS — useful partial metadata can be preliminarily scored with nullable unknown components, the penalty/cap, and explicit low-confidence semantics; insufficient metadata makes no AI call and remains Not Scored.
+- PASS — preliminary jobs use the existing queue and notification systems, full equivalents win equal-score ties, and Applied/Ignored exclusions remain intact.
+- PASS — partial-to-full enrichment preserves canonical job ID, application state, portal observations, and one match row while replacing the preliminary score with an authoritative V1 score.
+- PASS — Telegram uses one canonical job/profile event identity across partial and full states, preventing enrichment duplicates while allowing the first later full recommendation when no earlier qualifying event exists.
+- PASS — portal absence does not alter lifecycle missing/closed state; authoritative ATS lifecycle behavior remains covered by regression tests.
+- PASS — an AI failure leaves portal jobs persisted and allows later jobs in the scoring batch to continue.
+
+Issues/deviations/blockers:
+
+- No schema migration, dependency, browser automation, portal login, direct scraping, new scheduler, new queue, new matcher, or new notification engine was added.
+- The only expected V1 test adjustment changes the zero-credential scan assertion from zero sources/one error to three logged portal sources/four errors (the existing company-discovery configuration error plus one configuration failure per portal).
+- The optional Company join and full-before-partial queue tie-break are small service-layer compatibility changes required by M03 queue acceptance; no template, source-filter, detail-view, style, or other M04 UI behavior was implemented.
+- No deviation from the approved V2-M03 plan and no blocker before V2-M04.
+- The complete V1 + V2 suite was intentionally not run under the V2 testing policy.
+
+## V2-M04 Completion Record
+
+Completed: 2026-08-10
+
+Jobs, source filters, and presentation:
+
+- Extended the existing dynamic source options to union canonical `Job.source_type` values with actual `portal_job_sources.portal_name` values. LinkedIn, Naukri, and Indeed appear only when represented by stored data, while existing V1 sources retain their behavior.
+- Portal filtering uses an `EXISTS` observation predicate alongside the canonical source predicate. An ATS-canonical job observed on LinkedIn therefore matches the LinkedIn filter, and multiple observations cannot duplicate the visible canonical job.
+- Job list items now carry a compact primary source label, deduplicated alternate portal labels, completeness, and preliminary-match state. Full ATS jobs render their canonical source with a small `Also:` line; portal-only jobs render their portal source and a neutral `Partial data` indicator.
+- Partial matches render as preliminary/low-confidence results, while partial records below the M03 evidence gate remain visibly Not Scored. Full V1 jobs retain their normal score presentation.
+
+Detail, dashboard, state, and scan compatibility:
+
+- Job detail lookup no longer requires a Company row. It uses the canonical stored company display name, exposes the primary canonical/full link, retains alternate portal observation links, and renders a concise search-metadata notice without implying missing requirements were analyzed.
+- The existing Save, Mark Applied, and Ignore routes continue to operate on portal-only jobs through the canonical job ID. Saved/Applied/Ignored state, `applied_at`, resume, note, and detail rendering remain attached after full ATS enrichment.
+- The existing daily queue and dashboard render nullable-company portal jobs, their source, alternate sources, and partial/preliminary status. M03 remains the sole owner of eligibility and full-before-partial tie ordering.
+- The existing Scans page now includes bounded recent source activity from `scan_source_results`. LinkedIn, Naukri, and Indeed render as normal non-company sources with their existing status/count fields; no portal-specific page or duplicate run totals were added.
+
+Telegram and backup compatibility:
+
+- Recommendation and application-activity queries use the canonical stored company display name when no Company row exists and include a readable canonical source label. Partial recommendations retain M03's explicit partial/preliminary wording.
+- Recommendation identity remains `high-match:{job_id}:{profile_id}` and application activity remains keyed by canonical job/application timestamp. Adding another portal observation or enriching the canonical row does not create a source-specific notification identity.
+- The existing M02 backup implementation already archives the complete SQLite schema, including portal observations, completeness, canonical jobs, state, settings, and notification logs. M04 verifies a current V2 export/restore/restart round trip through the existing web flow.
+- The supported V1 staged migration path and safe-failure behavior remain covered by the M02 and M22 regression tests; no second backup format or restore path was introduced.
+
+File created:
+
+- `tests/module/test_v2_04_ui_backup.py`
+
+Files changed:
+
+- `app/services/job_dashboard.py`
+- `app/services/job_details.py`
+- `app/services/notifications.py`
+- `app/services/scan_history.py`
+- `app/web/templates/dashboard.html`
+- `app/web/templates/job_detail.html`
+- `app/web/templates/jobs.html`
+- `app/web/templates/scans.html`
+- `app/web/static/styles.css`
+- `docs/v2/IMPLEMENTATION_STATUS.md`
+
+Dependencies added: none.
+
+Focused verification:
+
+- `.venv/bin/pytest -q tests/module/test_v2_04_ui_backup.py` — 4 passed.
+- `.venv/bin/pytest -q tests/module/test_v2_02_portal_dedup.py tests/module/test_v2_03_portal_integration.py tests/module/test_v2_04_ui_backup.py tests/module/test_m16_dashboard_filters.py tests/module/test_m17_daily_action_queue.py tests/module/test_m18_job_detail_state.py tests/module/test_m20_telegram.py tests/module/test_m21_scan_history.py tests/module/test_m22_backup_restore.py` — 40 passed.
+- Targeted Python compilation and `git diff --check` — passed.
+
+Acceptance result:
+
+- PASS — actual canonical and alternate source data produces LinkedIn, Naukri, Indeed, and existing V1 options; canonical and alternate-source filtering returns each job once.
+- PASS — portal-only partial jobs render stored company, source, original URL, partial notice, preliminary score or Not Scored state, and all existing state actions without a Company row.
+- PASS — portal-to-ATS enrichment retains the same job, state metadata, and alternate links while the full canonical source/presentation takes precedence.
+- PASS — the existing queue and dashboard accept portal-only jobs and distinguish preliminary results without duplicating M03 ranking logic.
+- PASS — recommendation and application notifications render portal jobs correctly, and canonical job/profile identity prevents alternate-source and enrichment duplicates.
+- PASS — all three portal families render in existing source-level scan history without a company relationship or a new scan page.
+- PASS — current V2 backup round-trip preserves canonical jobs, portal observations, completeness, application state, settings, and notification logs; supported V1 migration and failed-restore safety remain regression-safe.
+- PASS — directly affected V1 dashboard, filters, daily queue, job detail/state, Telegram, scan history, and backup behavior remains intact.
+
+Issues/deviations/blockers:
+
+- No dependency, schema migration, backup-format redesign, ranking change, browser automation, portal scraping, new dashboard, new notification system, or new infrastructure was added.
+- The approved M02 backup implementation required no production rework; M04 added the requested end-to-end compatibility verification around it.
+- No deviation from the approved V2-M04 plan and no blocker before V2-M05.
+- The complete V1 + V2 suite and final workflow were intentionally not run; they remain exclusive to V2-M05.
+
+## V2-M05 Final Verification Record
+
+Completed: 2026-08-10
+
+Overall result: **V2 FINAL VERIFICATION — PASS**
+
+Regression and final workflows:
+
+- Historical V1 module suite — 83 passed.
+- V1 M23 deterministic final workflow — 1 passed.
+- V2-M01 through V2-M04 module suite — 53 passed.
+- New integrated V2 deterministic final workflow — 1 passed.
+- Canonical complete command, `.venv/bin/pytest -q tests/module tests/final` — 138 passed, 0 failed, 0 skipped.
+- The V2 final fixture uses the real shared scan pipeline with local fakes and covers ATS jobs, a LinkedIn duplicate, a unique Naukri partial job, an Indeed duplicate, a portal-first/full-later enrichment, an ambiguous signature, one isolated LinkedIn failure, preliminary and Not Scored paths, state actions, Telegram identity, all source filters, scan history, and manual/scheduled orchestration.
+
+Canonical identity and state proof:
+
+- A LinkedIn partial Platform Engineer job was assigned one canonical job ID, preliminarily scored, marked Saved for one profile, and marked Applied for another profile with `applied_at`, resume, and note.
+- A later Greenhouse scan deterministically enriched that exact row. The canonical job ID and existing match-row ID remained unchanged; company ownership, full Greenhouse identity/URL/description, `data_completeness=full`, normal V1 scoring version, and authoritative full score replaced the partial presentation.
+- The LinkedIn observation, Saved state, Applied state, application timestamp, selected resume, note, and notification event identity all remained attached.
+- A preliminary recommendation followed by full enrichment produced one `high-match:{job_id}:{profile_id}` log. The separate below-threshold/full-later and ATS-plus-multiple-portal idempotency cases also pass in the V2 module suite.
+
+Scenario results:
+
+- PASS — ATS then LinkedIn duplicate retains one full canonical job and remains discoverable through the LinkedIn filter.
+- PASS — unique Naukri portal jobs persist without fabricated Company rows, render/filter correctly, support Save/Ignore/Applied, and may be preliminary or Not Scored according to evidence.
+- PASS — LinkedIn partial then Saved/Applied then Greenhouse enrichment preserves identity and application metadata and performs a normal full rescore.
+- PASS — Indeed duplicate adds its original observation/link to the existing canonical ATS job without another visible row or notification identity.
+- PASS — two same-signature canonical requisitions make a portal result ambiguous, so it remains a separate job rather than merging unsafely.
+- PASS — LinkedIn failure produces a nullable-company failed source row and Partial run while ATS, Naukri, Indeed, persistence, scoring, and UI/logging continue.
+- PASS — useful partial metadata is constrained, penalized/capped, and labeled low confidence; insufficient metadata makes no AI call and remains visible as Not Scored.
+- PASS — Greenhouse, Lever, Ashby, Workday, LinkedIn, Naukri, and Indeed filters work; alternate-source filters return one canonical row.
+- PASS — portal search absence does not change lifecycle counters, while the complete historical ATS lifecycle transition/reopen behavior passes.
+- PASS — portal-only application activity notifications render stored company/source/URL without a Company join and remain idempotent.
+- PASS — Search Now and scheduled execution share one pipeline/overlap guard and portal stage; no second scheduler exists.
+
+Migration, backup, startup, and quality:
+
+- Fresh Alembic upgrade reached `20260810_0011 (head)` and created the portal table, nullable Company foreign key with `SET NULL`, alternate-source indexes, and unique portal identity/URL constraints.
+- `alembic check` reported no new upgrade operations. V1 `20260809_0010` upgrade/backfill and required downgrade/upgrade behavior pass in deterministic tests.
+- Current V2 backup round-trip preserves canonical jobs, portal observations, completeness, profiles, resumes, state, settings, and notification logs. Supported V1 archives migrate in staging, and invalid restore leaves the active database unchanged.
+- The documented Uvicorn command started against an isolated fresh database without API keys. `/health`, dashboard, Jobs, Profiles, Companies, Scans, `/settings/notifications`, and `/settings/backup` returned HTTP 200, then shutdown completed cleanly.
+- `python -m pip check` reported no broken requirements; Python compilation and `git diff --check` passed.
+- A repository scan found no Playwright, Chromium, Selenium, Redis, Celery, or Kafka runtime. Portal queries, provider responses, scan history, AI prompts/rescoring, and SQLite ownership remain bounded and suitable for the specified 8 GB Linux laptop.
+
+Live-provider result:
+
+- Live portal yield was not validated because search-provider credentials were unavailable. The configured provider is Brave, but no Brave Search API key is present. This is not a deterministic acceptance blocker.
+
+Files created during M05:
+
+- `tests/final/test_v2_end_to_end.py`
+
+Files changed during M05:
+
+- `tests/module/test_m01_foundation.py` — update the historical startup expectation to the approved V2 migration head.
+- `tests/final/test_m23_end_to_end.py` — include three portal source rows in shared-scan history counts and isolate the fixture from the developer's local `.env`.
+- `README.md` — document implemented V2 discovery, completeness behavior, configuration, current migration head, final commands, and corrected V1/V2 documentation paths.
+- `docs/v2/IMPLEMENTATION_STATUS.md` — record final evidence and completion.
+
+Production defect fixes: none. Dependencies added: none.
+
+Known limitations:
+
+- Live search yield and freshness depend on the selected Brave or Tavily provider's indexing and quota and cannot guarantee exhaustive portal coverage. Strict recognizers intentionally prefer skipping uncertain results.
+- Search-result metadata is incomplete by nature; preliminary results remain explicitly low confidence until deterministic full enrichment occurs.
+- Portal-only jobs are not closed from search-result absence because ranked search results are not an authoritative inventory.
+- Browser-assisted import remains an optional, separately approved later idea and is out of V2 scope; no browser automation, login, or access-control bypass is included.
+
+Readiness:
+
+- The application is ready for real local job discovery and daily use. Live portal discovery requires either a Brave Search or Tavily key for the selected provider; AI scoring and Telegram delivery remain optional and require their respective provider/model key and bot/chat configuration.
+
 ## Reuse vs New-Code Matrix
 
 | Concern | Reuse | Minimal new work |
 |---|---|---|
 | Profiles/roles/locations | Existing profile model/repository and ordered query inputs | Portal query formatting and round-robin cap |
-| Network search | Existing `WebSearchProvider` and Brave adapter | None |
+| Network search | Existing `WebSearchProvider`, Brave adapter, and additive Tavily adapter | None |
 | Company discovery | Existing service and blocked-host list unchanged | Regression assertion only |
 | Portal recognition | Existing `WebSearchResult` | Strict parser/query logic in `PortalDiscoveryService` |
 | Canonical jobs | Existing `jobs` table, normalization helpers, repository, upsert service | Nullable registry relation, company display/completeness/cross-source fields |
@@ -370,8 +722,8 @@ Required for deterministic development/tests: none.
 
 Required for live portal discovery:
 
-- existing `JOB_AGENT_SEARCH_PROVIDER=brave`
-- existing `JOB_AGENT_BRAVE_SEARCH_API_KEY`
+- `JOB_AGENT_SEARCH_PROVIDER=brave` with `JOB_AGENT_BRAVE_SEARCH_API_KEY`, or
+- `JOB_AGENT_SEARCH_PROVIDER=tavily` with `JOB_AGENT_TAVILY_API_KEY`
 - normal outbound HTTPS access
 
 Proposed new non-secret setting:
@@ -390,7 +742,7 @@ The existing optional AI key/model is required for both preliminary partial scor
 - Preliminary scores are intentionally low confidence because search snippets omit material job facts. The strict evidence gate, nullable unavailable components, five-point penalty, 89 cap, explicit label, and full-before-partial tie-break prevent them from being presented as equivalent to full-data matches.
 - The fixed 80-character evidence threshold is deterministic but may reject terse useful snippets or admit verbose low-information snippets. Focused fixtures and later observed false-positive/false-negative data should guide any separately reviewed threshold change.
 - The new nullable company relationship requires careful migration and regression of inner-join UI/notification paths.
-- Search volume rises by the bounded portal cap in addition to V1 company queries, affecting Brave quota/cost.
+- Search volume rises by the bounded portal cap in addition to V1 company queries, affecting the selected Brave or Tavily quota/cost.
 - Existing V1 backup archives require staged schema migration during restore; failure must leave current data untouched.
 - The current documentation relocation is uncommitted and root README links to old top-level doc paths may be stale. This is a repository documentation issue, not a V2 implementation blocker, and should be resolved separately or as part of the approved documentation update without altering frozen content.
 
@@ -410,8 +762,8 @@ Browser assistance is not part of the initial V2 plan. If measured live search c
 
 There is no blocker to fixture-driven implementation of the proposed V2.
 
-Live proof of current discovery yield requires a user-supplied Brave Search key and available indexed results, but credentials are not required for implementation or default acceptance tests. If product acceptance later changes from "discover useful indexed portal jobs" to guaranteed or exhaustive live portal coverage, the search-provider approach cannot guarantee that outcome and would require a separate product decision.
+Live proof of current discovery yield requires a user-supplied key for the selected Brave or Tavily provider and available indexed results, but credentials are not required for implementation or default acceptance tests. If product acceptance later changes from "discover useful indexed portal jobs" to guaranteed or exhaustive live portal coverage, the search-provider approach cannot guarantee that outcome and would require a separate product decision.
 
 ## Next Action
 
-Stop after V2-M01. Do not modify persistence or begin V2-M02 until the user explicitly authorizes it.
+V2 and V2-EXT-M01 are complete. Stop after focused Tavily verification; do not begin another development module or expand portal scope without separate user approval.

@@ -10,6 +10,7 @@ from app.models.companies import Company
 from app.models.job_matches import JobMatch
 from app.models.job_user_state import JobUserState
 from app.models.jobs import Job
+from app.models.portal_sources import PortalJobSource
 from app.models.profiles import CandidateProfile
 from app.models.resumes import Resume
 
@@ -27,9 +28,19 @@ class JobStateInputError(ValueError):
 
 
 @dataclass(frozen=True)
+class JobSourceLink:
+    source_name: str
+    source_label: str
+    url: str
+
+
+@dataclass(frozen=True)
 class JobDetailView:
     job: Job
-    company: Company
+    company: Company | None
+    company_name: str
+    primary_source_label: str
+    alternate_sources: tuple[JobSourceLink, ...]
     profiles: tuple[CandidateProfile, ...]
     profile: CandidateProfile | None
     match: JobMatch | None
@@ -59,9 +70,36 @@ class JobDetailService:
         job = self.session.get(Job, job_id)
         if job is None:
             raise JobDetailNotFoundError(f"Job {job_id} was not found")
-        company = self.session.get(Company, job.company_id)
-        if company is None:
-            raise JobDetailNotFoundError(f"Company for job {job_id} was not found")
+        company = (
+            self.session.get(Company, job.company_id)
+            if job.company_id is not None
+            else None
+        )
+        company_name = job.company_name or (
+            company.name if company is not None else "Not listed"
+        )
+        portal_sources = tuple(
+            self.session.scalars(
+                select(PortalJobSource)
+                .where(PortalJobSource.job_id == job.id)
+                .order_by(
+                    PortalJobSource.portal_name,
+                    PortalJobSource.id,
+                )
+            )
+        )
+        alternate_sources = tuple(
+            JobSourceLink(
+                source_name=source.portal_name,
+                source_label=_source_label(source.portal_name),
+                url=source.original_url,
+            )
+            for source in portal_sources
+            if not (
+                source.portal_name.casefold() == job.source_type.casefold()
+                and source.original_url == job.canonical_url
+            )
+        )
 
         profiles = tuple(
             self.session.scalars(
@@ -111,6 +149,9 @@ class JobDetailService:
         return JobDetailView(
             job=job,
             company=company,
+            company_name=company_name,
+            primary_source_label=_source_label(job.source_type),
+            alternate_sources=alternate_sources,
             profiles=profiles,
             profile=profile,
             match=match,
@@ -251,3 +292,10 @@ def _experience_text(job: Job) -> str:
 
 def _date_text(value: datetime | None) -> str:
     return value.strftime("%d %b %Y") if value is not None else "Not listed"
+
+
+def _source_label(value: str) -> str:
+    normalized = value.strip().casefold()
+    if normalized == "linkedin":
+        return "LinkedIn"
+    return normalized.replace("_", " ").title()

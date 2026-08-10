@@ -180,7 +180,7 @@ class NotificationService:
         with self.session_factory() as session:
             row = session.execute(
                 select(Job, Company, CandidateProfile, JobMatch)
-                .join(Company, Company.id == Job.company_id)
+                .outerjoin(Company, Company.id == Job.company_id)
                 .join(JobMatch, JobMatch.job_id == Job.id)
                 .join(CandidateProfile, CandidateProfile.id == JobMatch.profile_id)
                 .where(
@@ -192,13 +192,29 @@ class NotificationService:
             if row is None:
                 return NotificationResult(skipped=1)
             job, company, profile, match = row
-            message = (
-                f"New high match: {match.overall_score}% {match.recommendation_label}\n"
-                f"{job.title} at {company.name}\n"
-                f"Profile: {profile.name}\n"
-                f"Location: {job.location_text or 'Not listed'}\n"
-                f"{job.canonical_url}"
+            company_name = job.company_name or (
+                company.name if company is not None else "Not listed"
             )
+            if job.data_completeness == "partial":
+                message = (
+                    "Preliminary Match — Partial Data / Low Confidence\n"
+                    f"Score: {match.overall_score}% {match.recommendation_label}\n"
+                    f"{job.title} at {company_name}\n"
+                    f"Profile: {profile.name}\n"
+                    f"Source: {_source_label(job.source_type)}\n"
+                    f"Location: {job.location_text or 'Not listed'}\n"
+                    "Only search-result metadata was analyzed; review the full job "
+                    "description.\n"
+                    f"{job.canonical_url}"
+                )
+            else:
+                message = (
+                    f"New high match: {match.overall_score}% {match.recommendation_label}\n"
+                    f"{job.title} at {company_name}\n"
+                    f"Profile: {profile.name}\n"
+                    f"Location: {job.location_text or 'Not listed'}\n"
+                    f"{job.canonical_url}"
+                )
         return await self._deliver(
             "recommendation",
             event_key=f"high-match:{job_id}:{profile_id}",
@@ -214,7 +230,7 @@ class NotificationService:
         with self.session_factory() as session:
             row = session.execute(
                 select(Job, Company, CandidateProfile, JobUserState)
-                .join(Company, Company.id == Job.company_id)
+                .outerjoin(Company, Company.id == Job.company_id)
                 .join(JobUserState, JobUserState.job_id == Job.id)
                 .join(CandidateProfile, CandidateProfile.id == JobUserState.profile_id)
                 .where(
@@ -229,10 +245,14 @@ class NotificationService:
             job, company, profile, state = row
             applied_at = state.applied_at
             assert applied_at is not None
+            company_name = job.company_name or (
+                company.name if company is not None else "Not listed"
+            )
             message = (
                 f"Application recorded\n"
-                f"{job.title} at {company.name}\n"
+                f"{job.title} at {company_name}\n"
                 f"Profile: {profile.name}\n"
+                f"Source: {_source_label(job.source_type)}\n"
                 f"Applied: {applied_at.isoformat()}\n"
                 f"{job.canonical_url}"
             )
@@ -401,3 +421,10 @@ class NotificationService:
                 else None
             )
             session.commit()
+
+
+def _source_label(value: str) -> str:
+    normalized = value.strip().casefold()
+    if normalized == "linkedin":
+        return "LinkedIn"
+    return normalized.replace("_", " ").title()
