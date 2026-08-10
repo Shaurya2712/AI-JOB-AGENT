@@ -6,6 +6,14 @@ Status: V2-M01 through V2-M05 are complete, V2 final verification passed, and V2
 
 ## Post-Verification Defect Corrections
 
+### Safe company-seed expansion — 2026-08-10
+
+- Reviewed `docs/startup_seed_companies_with_career_links.xlsx`: 389 structurally valid rows, of which 10 were marked Web-verified, 5 used explicit parent/brand routes, and 374 remained `Best-known; recheck` in the workbook's Review Queue.
+- Preserved the six existing starter seeds and added six newly web-verified brands plus five canonicalized parent/company routes, for 17 active seed companies total.
+- Normalized `PingSafe-related teams where discoverable` to `SentinelOne` and `Segment-related teams` to `Twilio`; excluded duplicate aliases and every `Best-known; recheck` row that was not already an existing starter seed.
+- The seed imported idempotently into the running database and `/companies` returned HTTP 200 with all 17 companies visible. No scan was triggered.
+- Focused verification: `tests/module/test_m04_companies.py` — 2 passed; `git diff --check` passed.
+
 ### Jobs filter blank-value handling — 2026-08-10
 
 - Fixed the browser filter form returning HTTP 422 when optional numeric/date fields were submitted as empty strings alongside a real filter such as minimum salary.

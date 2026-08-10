@@ -28,5 +28,60 @@
     "name": "Razorpay",
     "website_url": "https://razorpay.com",
     "careers_url": "https://razorpay.com/careers"
+  },
+  {
+    "name": "BikeDekho",
+    "website_url": "https://www.bikedekho.com",
+    "careers_url": "https://careers.cardekho.com"
+  },
+  {
+    "name": "Dailyhunt",
+    "website_url": "https://www.dailyhunt.in",
+    "careers_url": "https://www.verse.in/careers"
+  },
+  {
+    "name": "Goibibo",
+    "website_url": "https://www.goibibo.com",
+    "careers_url": "https://careers.makemytrip.com"
+  },
+  {
+    "name": "Groww",
+    "website_url": "https://groww.in",
+    "careers_url": "https://groww.in/careers"
+  },
+  {
+    "name": "KloudMate",
+    "website_url": "https://www.kloudmate.com",
+    "careers_url": "https://www.kloudmate.com/careers"
+  },
+  {
+    "name": "Moj",
+    "website_url": "https://mojapp.in",
+    "careers_url": "https://sharechat.com/careers"
+  },
+  {
+    "name": "ScaleReal",
+    "website_url": "https://scalereal.com",
+    "careers_url": "https://www.scalereal.com/careers"
+  },
+  {
+    "name": "SentinelOne",
+    "website_url": "https://sentinelone.com",
+    "careers_url": "https://www.sentinelone.com/jobs"
+  },
+  {
+    "name": "Swiggy",
+    "website_url": "https://www.swiggy.com",
+    "careers_url": "https://careers.swiggy.com"
+  },
+  {
+    "name": "Twilio",
+    "website_url": "https://www.twilio.com",
+    "careers_url": "https://www.twilio.com/en-us/company/jobs"
+  },
+  {
+    "name": "Zepto",
+    "website_url": "https://www.zeptonow.com",
+    "careers_url": "https://www.zepto.com/careers"
   }
 ]

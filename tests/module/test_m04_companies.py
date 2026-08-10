@@ -12,6 +12,27 @@ from app.models.companies import Company
 from app.services.companies import CompanyService
 
 
+EXPECTED_BUNDLED_COMPANIES = {
+    "BikeDekho",
+    "BrowserStack",
+    "Chargebee",
+    "Dailyhunt",
+    "Freshworks",
+    "Goibibo",
+    "Groww",
+    "KloudMate",
+    "Meesho",
+    "Moj",
+    "Postman",
+    "Razorpay",
+    "ScaleReal",
+    "SentinelOne",
+    "Swiggy",
+    "Twilio",
+    "Zepto",
+}
+
+
 def build_test_app(database_path: Path, seed_path: Path):
     return create_app(
         Settings(
@@ -65,13 +86,17 @@ def test_bundled_seed_loads_and_companies_page_renders(tmp_path: Path) -> None:
             assert "Meesho" in response.text
             assert "Postman" in response.text
             assert "Razorpay" in response.text
+            assert "Groww" in response.text
+            assert "Swiggy" in response.text
+            assert "Zepto" in response.text
             assert "Pending detection" in response.text
 
             with application.state.session_factory() as session:
                 companies = list(session.scalars(select(Company).order_by(Company.name)))
-                assert len(companies) == 6
+                assert {company.name for company in companies} == EXPECTED_BUNDLED_COMPANIES
                 assert all(company.discovery_source == "seed" for company in companies)
                 assert all(company.is_active for company in companies)
+                assert all(company.careers_url for company in companies)
                 assert all(company.provider_type is None for company in companies)
                 assert all(company.last_scanned_at is None for company in companies)
                 assert all(company.last_success_at is None for company in companies)
